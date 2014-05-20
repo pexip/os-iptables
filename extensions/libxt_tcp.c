@@ -278,11 +278,10 @@ static void
 print_flags(uint8_t mask, uint8_t cmp, int invert, int numeric)
 {
 	if (mask || invert) {
-		printf("flags:%s", invert ? "!" : "");
+		printf(" flags:%s", invert ? "!" : "");
 		if (numeric)
-			printf(" 0x%02X/0x%02X", mask, cmp);
+			printf("0x%02X/0x%02X", mask, cmp);
 		else {
-			printf(" ");
 			print_tcpf(mask);
 			printf("/");
 			print_tcpf(cmp);
@@ -357,9 +356,7 @@ static void tcp_save(const void *ip, const struct xt_entry_match *match)
 		if (tcpinfo->invflags & XT_TCP_INV_FLAGS)
 			printf(" !");
 		printf(" --tcp-flags ");
-		if (tcpinfo->flg_mask != 0xFF) {
-			print_tcpf(tcpinfo->flg_mask);
-		}
+		print_tcpf(tcpinfo->flg_mask);
 		printf(" ");
 		print_tcpf(tcpinfo->flg_cmp);
 	}

@@ -1,8 +1,14 @@
-usr/sbin/* sbin
+lib/libip*.so.*
+usr/sbin/xtables-multi sbin
+usr/sbin/ip6tables sbin
+usr/sbin/ip6tables-restore sbin
+usr/sbin/ip6tables-save sbin
+usr/sbin/iptables sbin
+usr/sbin/iptables-restore sbin
+usr/sbin/iptables-save sbin
+usr/sbin/nf* usr/sbin
 lib/xtables
-lib/lib*.so.*
-usr/share/man/man8
-iptables/iptables-apply.8 usr/share/man/man8
 iptables/iptables-apply usr/sbin
 iptables/iptables.xslt usr/share/iptables
-howtos/NAT*html debian/tmp/howtos/packet*html usr/share/doc/iptables/html
+usr/share/man/man8
+usr/share/man/man1
