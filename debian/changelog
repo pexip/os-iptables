@@ -1,67 +1,183 @@
-iptables (1.4.12-1ubuntu5pexip1) pexip; urgency=low
+iptables (1.4.21-2pexip1) pexip; urgency=low
 
-  * Prepare Pexip packaging
+  * Migrate to Jessie
 
- -- John-Mark Bell <jmb@pexip.com>  Tue, 24 Dec 2013 21:14:28 +0000
+ -- John-Mark Bell <jmb@pexip.com>  Thu, 23 Feb 2017 19:17:58 +0000
 
-iptables (1.4.12-1ubuntu5) precise; urgency=low
+iptables (1.4.21-2) unstable; urgency=medium
 
-  * Add debian/patches/0002-libxt_RATEEST-link-with-lm.patch and
-     debian/patches/0003-libxt_statistic-link-with-lm.patch to fix broken
-     RATEEST and statistic modules. (LP: #982961)
-  * libxt_string: fix space around arguments. (LP: #1074923) 
+  * correct _dhopts var to enable autoreconf. Closes: #744968
+  * use arch:linux-any. Closes: #745171
+  * bump standards version, 3.9.4 to 3.9.5
+  * drop extra iptables-apply, fix iptables.install
 
- -- Chris J Arges <chris.j.arges@ubuntu.com>  Thu, 28 Feb 2013 13:41:27 -0600
+ -- Laurence J. Lane <ljlane@debian.org>  Mon, 19 May 2014 20:49:01 -0400
 
-iptables (1.4.12-1ubuntu4) precise; urgency=low
+iptables (1.4.21-1) unstable; urgency=low
 
-  * Update to use reap patch which was accepted upstream in slightly different form.
+  * New upstream release
+    + Corrected spurious load_extension errors. Closes: #699537
+    + Corrected man page icmp defaults. Closes: #644819
+    + Corrected state man page. Closes: #654983
+    + Corrected address in hashlimit man page. Closes: #698393
+    + Removed syslogd man page references. Closes: #567564
+    + Added string match man page hex examples. Closes: #699904
+    + Merged 0201-iptables-xml_man_section.patch
+    + Merged 0303-extension_cppflags.patch
+    + Merged 0401-state-match-display.patch 
+  * Updated iptables-apply to v1.1. Closes: #580941
+  * Use mktemp instead of tmpfile for iptables-apply. Closes: #668582
+  * Add iptables-apply info to man pages. Closes: #660748
+  * Updated debian/copyright 
+  * Updated debian/control Description
+  * Removed debian/builddir hack and other debian/rules cruft
+  * Removed debug info from README.Debian
 
- -- Tim Gardner <tim.gardner@canonical.com>  Fri, 09 Dec 2011 14:02:08 -0700
+ -- Laurence J. Lane <ljlane@debian.org>  Sun, 01 Dec 2013 19:48:23 -0500
 
-iptables (1.4.12-1ubuntu3) precise; urgency=low
+iptables (1.4.20-2) unstable; urgency=low
 
-  * Restore support for --reap, patch submitted to upstream.
-    -LP: #887332
+  * Fixed man page installation so that @PACKAGE_VERSION@ is expanded.
+    Reported by Christoph Biedl. Thanks.
+    Closes: #712403
+  * Fixed iptables-xml manpage mix-up
+  * Restored missing connlabel extension
 
-  * Fix FTBS against linux 3.2 headers by copying linux/types.h to
-    local include directory. This package unfortunately has a
-    number of local kernel headers that are getting out of date.
+ -- Laurence J. Lane <ljlane@debian.org>  Sat, 17 Aug 2013 09:16:04 -0400
 
- -- Tim Gardner <tim.gardner@canonical.com>  Wed, 30 Nov 2011 09:03:14 -0700
+iptables (1.4.20-1) unstable; urgency=low
 
-iptables (1.4.12-1ubuntu2) precise; urgency=low
+  * New upstream release
+  * added 0401-state-match-display.patch for the missing state match
+    display reported by Eugene Berdnikov and fixed by Phil Oester. Thanks.
+    Closes: #718810 
+  * upstream fix addresses concurrent invocation issues reported by
+    Lamont Jones. Fixed upstream by Phil Oester and Pablo Neira Ayuso.
+    Closes: #710997
 
-  * Stop shipping .la files again.  Apparently this was a mistaken merge,
-    and was intending to ship libipq_pic.la when it should have been
-    libipq_pic.a; but we haven't been shipping the latter since natty,
-    perlipq and nepenthes apparently both build fine anyway, and including a
-    .la file with incorrect paths in dependency_libs actively breaks the
-    collectd build.
+ -- Laurence J. Lane <ljlane@debian.org>  Thu, 08 Aug 2013 10:39:54 -0400
 
- -- Colin Watson <cjwatson@ubuntu.com>  Fri, 18 Nov 2011 22:11:48 +0000
+iptables (1.4.19.1-1) unstable; urgency=low
 
-iptables (1.4.12-1ubuntu1) precise; urgency=low
+  * New upstream release
+  * Bumped Standard-Version to 3.9.4
 
-  * Merge from Debian unstable (LP: #887192). Remaining changes:
-    - 9000-howtos.patch: add howtos/ and install them
-    - 9001-build-libipq_pic.la.patch: Build libipq_pic.la with -fPIC
-    - debian/control: Build-Depends on linuxdoc-tools
-    - debian/iptables.install: install NAT and packetfilter howtos into
-      /usr/share/doc
-    - debian/iptables-dev.install: install netfilter howto into /usr/share/doc
-    - debian/iptables-dev.doc-base.netfilter-extensions,
-      debian/iptables-dev.doc-base.netfilter-hacking,
-      debian/iptables.doc-base.nat, debian/iptables.doc-base.packet-filter: add
-      howtos
-    - debian/iptables-dev.install: install lib/*.la in usr/lib
-    - No longer apply the following:
-      + 9002-xt_recent-reap.patch: this requires a rewrite of the patch. For
-        now adjust series to not apply, file a bug, assigning to the kernel
-        team. Once they have resubmitted upstream, we can take the new patch.
-      + 9003-compilation-error.patch: no longer needed with newer iptables
+ -- Laurence J. Lane <ljlane@debian.org>  Sat, 20 Jul 2013 17:30:47 -0400
 
- -- Jamie Strandboge <jamie@ubuntu.com>  Mon, 07 Nov 2011 13:46:11 -0600
+iptables (1.4.18-1.1) unstable; urgency=low
+
+  [ gregor herrmann ]
+  * Fix "libipq.h includes non-existing linux/netfilter_ipv4/ip_queue.h":
+    ship /usr/include/linux/netfilter_ipv4/ip_queue.h in iptables-dev;
+    add Breaks on linux-libc-dev << 3.5
+    (Closes: #707535)
+
+  [ Dominic Hargreaves ]
+  * Non-maintainer upload
+
+ -- Dominic Hargreaves <dom@earth.li>  Sat, 13 Jul 2013 16:09:01 +0100
+
+iptables (1.4.18-1) unstable; urgency=low
+
+  * New upstream release
+  * New package for soname bump: libxtables10
+
+ -- Laurence J. Lane <ljlane@debian.org>  Sun, 24 Mar 2013 17:15:41 -0400
+
+iptables (1.4.16.3-4) unstable; urgency=low
+
+  * Added missing Breaks and Replaces for libxtables9. Thanks all.
+    Closes: #692171
+
+ -- Laurence J. Lane <ljlane@debian.org>  Fri, 02 Nov 2012 22:52:47 -0400
+
+iptables (1.4.16.3-3) unstable; urgency=low
+
+  * Added versioned libxtables dependency 
+
+ -- Laurence J. Lane <ljlane@debian.org>  Sun, 28 Oct 2012 09:40:00 -0400
+
+iptables (1.4.16.3-2) unstable; urgency=low
+
+  * Moved libxtables into a separate package. Fixes problem with connman
+    reported by Jonathan Nieder. Thanks. Closes: #691546
+  * Added nfnl_osf and xtables-mutil man page stubs.
+
+ -- Laurence J. Lane <ljlane@debian.org>  Sat, 27 Oct 2012 09:36:56 -0400
+
+iptables (1.4.16.3-1) unstable; urgency=low
+
+  * New upstream release
+  * Moved nfnl_osf to /usr/sbin. Fixes lib dependency problem reported
+    by Matteo Cortese. Thanks. Closes: #667688
+
+ -- Laurence J. Lane <ljlane@debian.org>  Fri, 19 Oct 2012 12:07:42 -0400
+
+iptables (1.4.14-3) unstable; urgency=low
+
+  * Fixes iptables comment output error reported by Christoph Anton
+    Mitterer. Fixed upstream by Pablo Neira Ayuso. Thanks. 
+    Closes: #679098
+
+ -- Laurence J. Lane <ljlane@debian.org>  Sat, 28 Jul 2012 11:58:38 -0400
+
+iptables (1.4.14-2) unstable; urgency=low
+
+  * Added missing 1.4.13-1.1 NMU fix 
+
+ -- Laurence J. Lane <ljlane@debian.org>  Mon, 11 Jun 2012 17:39:35 -0400
+
+iptables (1.4.14-1) unstable; urgency=low
+
+  * New upstream release
+
+ -- Laurence J. Lane <ljlanedd@debian.org>  Mon, 11 Jun 2012 17:31:41 -0400
+
+iptables (1.4.13-1.1) unstable; urgency=low
+
+  * Non-maintainer upload.
+  * Add build-arch and build-indep targets to BUILD_DIR_TARGETS (closes:
+    #666335). Thanks to Lucas Nussbaum for the bug report.
+
+ -- Jakub Wilk <jwilk@debian.org>  Sun, 22 Apr 2012 15:50:33 +0200
+
+iptables (1.4.13-1) unstable; urgency=low
+
+  * New upstream release
+
+ -- Laurence J. Lane <ljlane@debian.org>  Tue, 27 Mar 2012 09:35:10 -0400
+
+iptables (1.4.12.2-3) unstable; urgency=low
+
+  * Added CPPFLAGS for extensions to enable hardening. Report and 
+    patch by Simon Ruderich. Thanks. Closes: #665286 
+
+ -- Laurence J. Lane <ljlane@debian.org>  Thu, 22 Mar 2012 18:54:37 -0400
+
+iptables (1.4.12.2-2) unstable; urgency=low
+
+  * Added iptables-xml.1. Resolves issues reported by Thilo Six and
+    Helge Kreutzmann. Thanks. Closes: #623112
+
+  * include/linux/types.h refresh adds __aligned_u64. Gleaned from a post
+    by Autif Khan. Fixes FTBFS reported by Moritz Muehlenhoff. Thanks.
+    Closes: #664066  
+
+ -- Laurence J. Lane <ljlane@debian.org>  Thu, 15 Mar 2012 14:03:31 -0400
+
+iptables (1.4.12.2-1) unstable; urgency=low
+
+  * New upstream release
+
+ -- Laurence J. Lane <ljlane@debian.org>  Thu, 05 Jan 2012 16:30:12 -0500
+
+iptables (1.4.12.1-1) unstable; urgency=low
+
+  * New upstream release
+  * Depend on debhelper 9. Allows hardened build flags. Reported by
+    Moritz Muehlenhoff. Thanks. Closes: #653737
+
+ -- Laurence J. Lane <ljlane@debian.org>  Sat, 31 Dec 2011 14:04:51 -0500
 
 iptables (1.4.12-1) unstable; urgency=low
 
@@ -104,49 +220,6 @@ iptables (1.4.11.1-1) unstable; urgency=low
 
  -- Laurence J. Lane <ljlane@debian.org>  Sun, 12 Jun 2011 12:33:47 -0400
 
-iptables (1.4.10-1ubuntu1) natty; urgency=low
-
-  [ Lorenzo De Liso ]
-  * Merge from debian unstable (LP: #671652), remaining changes:
-    - Don't fail to run iptables-save if iptables module isn't loaded.
-    - Revert changes between 1.4.1.1-3 and 1.4.1.1-4, thus bringing back
-      the howtos.
-    - Added linuxdoc-tools to Build-Depends
-    - Modified debian/iptables{,-dev}.install to match DM syntax
-      (removed debian/tmp)
-    - Added -fno-strict-aliasing -Werror switches to regular_CFLAGS
-      for catching errors early
-    - Removed unused TC_NUM_RULES() and TC_GET_RULE()
-  * debian/patches/03-compilation-error.patch: updated
-  * debian/patches/0600-makefile_jedi_handwaving.patch: updated
-  * Dropped changes:
-    - debian/patches/0902-docs-version-reference.diff: modifies files inside
-      the debian/ directory and hence is not needed
-
-  [ Jamie Strandboge ]
-  * debian/patches/9000-howtos.patch:
-    - combine 0102-howtos.patch and 0103-sgml_errors.patch into this patch
-      and apply after the Debian patches for easier maintenance
-    - add DEP-3 comments
-  * debian/patches/9001-build-libipq_pic.la.patch:
-    - Build libipq_pic.la with -fPIC
-    - add DEP-3 comments
-  * debian/iptables-dev.install: install lib/*.la in usr/lib
-  * merge debian/patches/9002-xt_recent-reap.patch:
-    - support for the xt_recent filter --reap switch (refreshed and updated)
-    - add DEP-3 comments
-  * debian/patches/9003-compilation-error.patch:
-    - renamed 03-compilation-error.patch as 9003-compilation-error.patch
-    - apply after Debian patches for easier maintenance
-    - add DEP-3 comments
-  * debian/iptables.doc-base.{nat|packet-filter}: update for 2.6
-  * Dropped changes:
-    - Replaced ipt_DSCP.h by xpt_DSCP.h in ipt_ECN.h and ipt_echn.h (applied
-      upstream)
-    - 9001-build-libipq_pic.a.patch (using la instead)
-
- -- Jamie Strandboge <jamie@ubuntu.com>  Fri, 12 Nov 2010 15:58:40 -0600
-
 iptables (1.4.10-1) unstable; urgency=low
 
   * New upstream release
@@ -164,7 +237,7 @@ iptables (1.4.9-1) unstable; urgency=low
 iptables (1.4.8-3) unstable; urgency=low
 
   * added missing iptables-xml symlink and man page. Reported by Carl
-    Fürstenberg and others. Closes: #589059
+    FÃ¼rstenberg and others. Closes: #589059
 
  -- Laurence J. Lane <ljlane@debian.org>  Fri, 16 Jul 2010 16:56:20 -0400
 
@@ -219,36 +292,6 @@ iptables (1.4.5-1) unstable; urgency=low
 
  -- Laurence J. Lane <ljlane@debian.org>  Sat, 28 Nov 2009 16:41:04 -0500
 
-iptables (1.4.4-2ubuntu3) maverick; urgency=low
-
-  * Replaced ipt_DSCP.h by xpt_DSCP.h in ipt_ECN.h and ipt_echn.h (LP: #600195)
-  * Added -fno-strict-aliasing -Werror switches to regular_CFLAGS for catching
-    errors early
-  * Removed unused TC_NUM_RULES() and TC_GET_RULE()
-
- -- Surbhi Palande <surbhi.palande@canonical.com>  Wed, 14 Jul 2010 12:30:38 +0300
-
-iptables (1.4.4-2ubuntu2) lucid; urgency=low
-
-  * Added support for the xt_recent filter --reap switch. This
-    feature should appear in the 1.4.8 upstream release.
-
- -- Tim Gardner <tim.gardner@canonical.com>  Thu, 04 Mar 2010 07:16:17 -0700
-
-iptables (1.4.4-2ubuntu1) lucid; urgency=low
-
-  * Merge from debian unstable (LP: #473261), remaining changes:
-    - Don't fail to run iptables-save if iptables module isn't loaded.
-    - debian/patches/0901-build-libipq_pic.a.patch - Build libipq_pic.a with
-      -fPIC. Upstream changed build system and patch modified accordingly.
-    - Revert changes between 1.4.1.1-3 and 1.4.1.1-4, thus bringing back
-      the howtos.
-    - Added linuxdoc-tools to Build-Depends
-    - Modified debian/iptables{,-dev}.install to match DM syntax
-      (removed debian/tmp) 
-
- -- Nicolas Valcárcel Scerpella (Canonical) <nvalcarcel@canonical.com>  Tue, 03 Nov 2009 15:00:11 -0500
-
 iptables (1.4.4-2) unstable; urgency=low
 
   * renamed debian/patches to debian/patch to avoid 3.0-quilt-by-default
@@ -256,20 +299,6 @@ iptables (1.4.4-2) unstable; urgency=low
   * Bumped Standards Version to 3.8.2
 
  -- Laurence J. Lane <ljlane@debian.org>  Tue, 28 Jul 2009 09:16:06 -0400
-
-iptables (1.4.4-1ubuntu1) karmic; urgency=low
-
-  * Merge from debian unstable, remaining changes: LP: #399211
-    - Don't fail to run iptables-save if iptables module isn't loaded.
-    - debian/patches/0901-build-libipq_pic.a.patch - Build libipq_pic.a with
-      -fPIC. Upstream changed build system and patch modified accordingly.
-    - Revert changes between 1.4.1.1-3 and 1.4.1.1-4, thus bringing back
-      the howtos.
-    - Added linuxdoc-tools to Build-Depends
-    - Modified debian/iptables{,-dev}.install to match DM syntax
-      (removed debian/tmp)
-
- -- Bhavani Shankar <right2bhavi@gmail.com>  Tue, 14 Jul 2009 15:59:54 +0530
 
 iptables (1.4.4-1) unstable; urgency=low
 
@@ -283,22 +312,6 @@ iptables (1.4.4-1) unstable; urgency=low
   * Added ip6tables-apply symlinks for martin f krafft. Closes: #524862
 
  -- Laurence J. Lane <ljlane@debian.org>  Thu, 18 Jun 2009 08:14:55 -0400
-
-iptables (1.4.3.2-2ubuntu1) karmic; urgency=low
-
-  * Merge from debian unstable (LP: #372920), remaining changes:
-    - Don't fail to run iptables-save if iptables module isn't loaded.
-    - debian/patches/0901-build-libipq_pic.a.patch - Build libipq_pic.a with
-      -fPIC. Upstream changed build system and patch modified accordingly.
-    - Revert changes between 1.4.1.1-3 and 1.4.1.1-4, thus bringing back
-      the howtos.
-  * Droped unexistent patches from debian/patches/series
-  * Droped 0903-autoload-module-in-iptables-save.diff, fixed upstream
-  * Added linuxdoc-tools to Build-Depends
-  * Modified debian/iptables{,-dev}.install to match DM syntax 
-    (removed debian/tmp)
-
- -- Nicolas Valcárcel Scerpella <nvalcarcel@canonical.com>  Wed, 06 May 2009 16:35:21 -0500
 
 iptables (1.4.3.2-2) unstable; urgency=low
 
@@ -391,36 +404,10 @@ iptables (1.4.2-1) unstable; urgency=low
     Feldgendler. Thanks. closes: #509386  
   * -multi bins were included in buildd generated packages. Reported
     by Alexey Feldgendler. closes: 509385
-  * added missing iptables.xslt. Reported by Carl FÃ¼rstenberg. Thanks.
+  * added missing iptables.xslt. Reported by Carl FÃÂ¼rstenberg. Thanks.
     closes: #501615. 
 
  -- Laurence J. Lane <ljlane@debian.org>  Fri, 02 Jan 2009 17:19:08 -0500
-
-iptables (1.4.1.1-4ubuntu3) jaunty; urgency=low
-
-  * No-change rebuild to fix lpia shared library dependencies.
-
- -- Colin Watson <cjwatson@ubuntu.com>  Thu, 19 Mar 2009 01:06:26 +0000
-
-iptables (1.4.1.1-4ubuntu2) jaunty; urgency=low
-
-  * Don't fail to run iptables-save if iptables module isn't loaded.
-    (I.e. automatically load them if they're not already) (LP: #338850)
-
- -- Soren Hansen <soren@ubuntu.com>  Mon, 16 Mar 2009 10:53:15 +0100
-
-iptables (1.4.1.1-4ubuntu1) jaunty; urgency=low
-
-  [ Iain Lane ]
-  * Merge from debian unstable (LP: #294220), remaining changes:
-    - debian/patches/0901-build-libipq_pic.a.patch - Build libipq_pic.a with
-      -fPIC. Upstream changed build system and patch modified accordingly.
-
-  [ Soren Hansen ]
-  * Revert changes between 1.4.1.1-3 and 1.4.1.1-4, thus bringing back
-    the howtos.
-
- -- Soren Hansen <soren@ubuntu.com>  Sat, 15 Nov 2008 01:27:37 +0100
 
 iptables (1.4.1.1-4) unstable; urgency=low
 
@@ -451,23 +438,6 @@ iptables (1.4.1.1-1) unstable; urgency=medium
   * changed standards version from 3.7.3 to 3.8.0
 
  -- Laurence J. Lane <ljlane@debian.org>  Sat, 12 Jul 2008 05:28:33 -0400
-
-iptables (1.4.0-4ubuntu2) intrepid; urgency=low
-
-  * Build libipq_pic.a with -fPIC and re-add it to iptables-dev (it got lost
-    in the last merge and perlipq needs it to build on AMD64 and nepenthes
-    benefits from it too). (LP: #256037)
-
- -- Michael Bienia <geser@ubuntu.com>  Fri, 08 Aug 2008 13:50:45 +0200
-
-iptables (1.4.0-4ubuntu1) intrepid; urgency=low
-
-  * Merge from debian unstable, remaining changes:
-    - Took references to 2.4 kernel out of doc-base control files (Jordan
-      Mantha, Malone #25972) (patches/all/091-fix-2.4-references.patch)
-    - Use linux-libc-dev instead of local copy of kernel-headers.
-
- -- Soren Hansen <soren@ubuntu.com>  Tue, 24 Jun 2008 15:06:04 +0200
 
 iptables (1.4.0-4) unstable; urgency=low
 
@@ -500,33 +470,6 @@ iptables (1.4.0-1) unstable; urgency=low
 
  -- Laurence J. Lane <ljlane@debian.org>  Thu, 07 Feb 2008 00:20:34 -0500
 
-iptables (1.3.8.0debian1-1ubuntu2) hardy; urgency=low
-
-  [ Michael Bienia ]
-  * Build a libipq_pic.a compiled with -fPIC (needed by other packages to
-    successfully build on AMD64).
-
-  [ Soren Hansen ]
-  * Build a libiptc_pic.a compiled with -fPIC (needed by other packages to
-    successfully build on AMD64). Patch taken from Debian bug #358637.
-  * Rebuild against newer linux-libc-dev to get mh and quota extensions.
-
- -- Soren Hansen <soren@ubuntu.com>  Mon, 28 Jan 2008 13:24:34 +0100
-
-iptables (1.3.8.0debian1-1ubuntu1) hardy; urgency=low
-
-  * Merge from debian unstable. Remaining changes:
-    - Build with -fno-stack-protector to fix failing ICMP module (Malone: #66681)
-    - Took references to 2.4 kernel out of doc-base control files (Jordan
-      Mantha, Malone #25972) (patches/all/091-fix-2.4-references.patch)
-    - Use linux-libc-dev instead of local copy of kernel-headers (Fabio M.
-      Di Nitto).
-  * 090-fix-conditional-builds.patch:
-    - Fix all the conditionally built iptables extensions to actually build
-      if we have the kernel support.
-
- -- Soren Hansen <soren@ubuntu.com>  Mon, 12 Nov 2007 18:12:04 +0100
-
 iptables (1.3.8.0debian1-1) unstable; urgency=low
 
   * New upstream release
@@ -541,52 +484,6 @@ iptables (1.3.8.0debian1-1) unstable; urgency=low
     iptables-rename-fix, replace-pad_cdir, svn-2006-10-21
 
  -- Laurence J. Lane <ljlane@debian.org>  Sat, 28 Jul 2007 19:22:20 -0400
-
-iptables (1.3.6.0debian1-5ubuntu5) gutsy; urgency=low
-
-  * patches/all/090_enable-ipv6-rt.patch: include broken-out patch for
-    "rt" build, which was missed when applying the patch inline in the
-    previous version.
-
- -- Kees Cook <kees@ubuntu.com>  Wed, 04 Jul 2007 17:11:52 -0700
-
-iptables (1.3.6.0debian1-5ubuntu4) gutsy; urgency=low
-
-  * iptables/extensions/Makefile: enable "rt" module for ip6tables
-    (LP: #114184).
-
- -- Kees Cook <kees@ubuntu.com>  Wed, 04 Jul 2007 03:56:20 -0700
-
-iptables (1.3.6.0debian1-5ubuntu3) gutsy; urgency=low
-
-  * patches/all/012-2.6.22-headers-fix.patch:
-    + Fix FTBFS on gutsy due to renamed header files in linux-libc-dev.
-      Patch taken from upstream svn (rev 6001). (LP: #120908)
-  * iptables/extensions/.CLUSTERIP-test:
-    + Fix CLUSTERIP detection code to reenable the module (it was accidentally
-      removed when we started using linux-libc-dev instead of bundled headers).
-      (LP: #113863)
-
- -- Soren Hansen <soren@ubuntu.com>  Mon, 18 Jun 2007 10:35:01 +0200
-
-iptables (1.3.6.0debian1-5ubuntu2) feisty; urgency=low
-
-  * Rebuild for changes in the amd64 toolchain.
-  * Set Ubuntu maintainer address.
-
- -- Matthias Klose <doko@ubuntu.com>  Mon,  5 Mar 2007 01:19:06 +0000
-
-iptables (1.3.6.0debian1-5ubuntu1) feisty; urgency=low
-
-  * Merge from debian unstable.
-  * Remaining Ubuntu changes:
-    - Build with -fno-stack-protector to fix failing ICMP module (Malone: #66681)
-    - Took references to 2.4 kernel out of doc-base control files (Jordan
-      Mantha, Malone #25972).
-    - Use linux-libc-dev instead of local copy of kernel-headers (Fabio M.
-      Di Nitto).
-
- -- Andrew Mitchell <ajmitch@ubuntu.com>  Thu,  7 Dec 2006 01:25:07 +1300
 
 iptables (1.3.6.0debian1-5) unstable; urgency=high
 
@@ -610,18 +507,6 @@ iptables (1.3.6.0debian1-3) unstable; urgency=high
 
  -- Laurence J. Lane <ljlane@debian.org>  Thu,  9 Nov 2006 05:58:51 -0500
 
-iptables (1.3.6.0debian1-2ubuntu1) feisty; urgency=low
-
-  * Merge from debian unstable.
-  * Remaining Ubuntu changes:
-    - Build with -fno-stack-protector to fix failing ICMP module (Malone: #66681)
-    - Took references to 2.4 kernel out of doc-base control files (Jordan
-      Mantha, Malone #25972).
-    - Use linux-libc-dev instead of local copy of kernel-headers (Fabio M.
-      Di Nitto).
-
- -- Andrew Mitchell <ajmitch@ubuntu.com>  Wed, 15 Nov 2006 14:56:29 +1300
-
 iptables (1.3.6.0debian1-2) unstable; urgency=low
 
   * physdev-truncated.man.patch: fixed misssed instance of the error
@@ -640,7 +525,7 @@ iptables (1.3.6.0debian1-1) unstable; urgency=low
     + adds support port range match to libip6t_multiport
     + adds endian annotation types to fix compilation for
       kernels > 2.6.18
-  * ipv6 updates in SVN by RÃÂ©mi Denis-Courmont fixes the ip6tables port
+  * ipv6 updates in SVN by RÃÂÃÂ©mi Denis-Courmont fixes the ip6tables port
     range bug reported by Alexander Dreweke. Thanks. closes: #329775
   * debian/control: added info about missing kernel extensions
   * bumped standards version to 3.7.2, no changes
@@ -661,28 +546,6 @@ iptables (1.3.6.0debian1-1) unstable; urgency=low
   * removed atomic_t_silly_hack.patch, code moved somewhere or another
 
  -- Laurence J. Lane <ljlane@debian.org>  Fri, 27 Oct 2006 19:39:57 -0400
-
-iptables (1.3.5.0debian1-1ubuntu2) edgy; urgency=low
-
-  * Build with -fno-stack-protector to fix failing ICMP module (Malone: #66681)
-
- -- Andrew Mitchell <ajmitch@ubuntu.com>  Mon, 23 Oct 2006 20:39:03 +1300
-
-iptables (1.3.5.0debian1-1ubuntu1) edgy; urgency=low
-
-  * Resynchronise with Debian (closes: Malone #30992, #40601, #51044).
-  * Switch from linux-kernel-headers to linux-libc-dev (closes: Malone
-    #65830).
-  * Drop patches/all/003-no-local-kernel-headers.patch;
-    <linux/netfilter_ipv4/ip_tables.h> includes IPT_F_GOTO since Linux
-    2.6.14.
-  * Remaining Ubuntu changes:
-    - Took references to 2.4 kernel out of doc-base control files (Jordan
-      Mantha, Malone #25972).
-    - Use linux-libc-dev instead of local copy of kernel-headers (Fabio M.
-      Di Nitto).
-
- -- Colin Watson <cjwatson@ubuntu.com>  Fri, 13 Oct 2006 18:08:42 +0100
 
 iptables (1.3.5.0debian1-1) unstable; urgency=low
 
@@ -707,35 +570,9 @@ iptables (1.3.5.0debian1-1) unstable; urgency=low
     mport, nth, osf, pool, psd, quota, random, time
   * replaced debian/copyright GPL paste with stubs
   * updated debian/copyright source URLs
-  * Thanks for the invaluable help RÃÂ©mi Denis-Courmont.
+  * Thanks for the invaluable help RÃÂÃÂ©mi Denis-Courmont.
 
  -- Laurence J. Lane <ljlane@debian.org>  Sun, 20 Aug 2006 21:29:33 -0400
-
-iptables (1.3.3-2ubuntu4) dapper; urgency=low
-
-  * Took references to 2.4 kernel out of  doc-base control files 
-    (closes:Malone #25972) 
-
- -- Jordan Mantha <mantha@ubuntu.com>  Fri, 17 Mar 2006 04:13:06 -0800
-
-iptables (1.3.3-2ubuntu3) dapper; urgency=low
-
-  * Fix variable KERNEL_DIR. It is just '/usr'. not '/usr/include'. 
-    This reenables nearly all extension modules (Ubuntu: #19978)
-
- -- Reinhard Tartler <siretart@ubuntu.com>  Wed, 23 Nov 2005 19:10:47 +0000
-
-iptables (1.3.3-2ubuntu2) dapper; urgency=low
-
-  * fixed borked merge. MoM does not deal with binary changes in debdiffs
-
- -- Reinhard Tartler <siretart@ubuntu.com>  Wed, 23 Nov 2005 10:16:49 +0100
-
-iptables (1.3.3-2ubuntu1) dapper; urgency=low
-
-  * Resynchronise with Debian.
-
- -- Scott James Remnant <scott@ubuntu.com>  Tue, 08 Nov 2005 07:29:09 +0000
 
 iptables (1.3.3-2) unstable; urgency=low
 
@@ -758,21 +595,6 @@ iptables (1.3.2-1) unstable; urgency=low
   * removed libipt_physdev.c and libip6t_physdev.c from weird_*.patch
 
  -- Laurence J. Lane <ljlane@debian.org>  Sun, 24 Jul 2005 21:03:39 -0400
-
-iptables (1.3.1-2ubuntu1) breezy; urgency=low
-
-  * Drop ip_queue_vwmark from patch-o-matic-ng-20050618 tarball and ippool:
-    - These extensions require kernel patches that are not part of the
-      stock kernel.
-  * Switch to use linux-kernel-headers instead of local copy of
-    kernel-headers:
-    - Add patches/all/003-no-local-kernel-headers.patch to cope with a missing
-      define.
-    - Change debian/rules KERNEL_DIR to point to /usr/include.
-    - Add build-dep on linux-kernel-headers (>= 2.6.11.2-0ubuntu10) to ensure
-      we have recent enough headers to build.
-
- -- Fabio M. Di Nitto <fabbione@ubuntu.com>  Tue, 12 Jul 2005 07:37:51 +0200
 
 iptables (1.3.1-2) unstable; urgency=low
 
