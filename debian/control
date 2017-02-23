@@ -7,7 +7,7 @@ XSBC-Original-Maintainer: Laurence J. Lane <ljlane@debian.org>
 Build-Depends: debhelper (>> 7.0.50), autoconf, automake, libtool (>=2.2.6), libnfnetlink-dev, linuxdoc-tools
 Standards-Version: 3.8.3
 Homepage: http://www.netfilter.org/
-XS-Pexip-Upstream: http://archive.ubuntu.com/ubuntu/ precise
+XS-Pexip-Upstream: http://ftp.debian.org/debian/ jessie
 
 Package: iptables
 Architecture: any
