@@ -34,9 +34,9 @@ Description: man page hyphen cleanup
  \-\-hmark-tuple src,dst,proto \-\-hmark-mod 10 \-\-hmark\-rnd 0xdeafbeef
 --- a/extensions/libxt_SET.man
 +++ b/extensions/libxt_SET.man
-@@ -21,5 +21,5 @@
- when adding an entry if it already exists, reset the timeout value
- to the specified one or to the default from the set definition
+@@ -42,5 +42,5 @@
+ \fB\-\-map\-queue\fP
+ flags can be used in the OUTPUT, FORWARD and POSTROUTING chains.
  .PP
 -Use of -j SET requires that ipset kernel support is provided, which, for
 +Use of \-j SET requires that ipset kernel support is provided, which, for

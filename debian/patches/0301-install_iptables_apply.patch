@@ -12,21 +12,22 @@ Signed-off-by: Laurence J. Lane <ljlane@debian.org>
 
 --- a/iptables/Makefile.am
 +++ b/iptables/Makefile.am
-@@ -27,7 +27,9 @@
- sbin_PROGRAMS    = xtables-multi
+@@ -54,7 +54,10 @@
+ endif
  man_MANS         = iptables.8 iptables-restore.8 iptables-save.8 \
                     iptables-xml.1 ip6tables.8 ip6tables-restore.8 \
 -                   ip6tables-save.8 iptables-extensions.8
 +                   ip6tables-save.8 iptables-extensions.8 \
-+                   iptables-apply.8 ip6tables-apply.8
-+sbin_SCRIPTS     = iptables-apply
- CLEANFILES       = iptables.8
++		   iptables-apply.8 ip6tables-apply.8
++sbin_SCRIPTS	 = iptables-apply
++
+ CLEANFILES       = iptables.8 \
+ 		   xtables-config-parser.c xtables-config-syntax.c
  
- vx_bin_links   = iptables-xml
-@@ -52,3 +54,4 @@
- 	for i in ${vx_bin_links}; do ${LN_S} -f "${sbindir}/xtables-multi" "${DESTDIR}${bindir}/$$i"; done;
+@@ -86,3 +89,4 @@
  	for i in ${v4_sbin_links}; do ${LN_S} -f xtables-multi "${DESTDIR}${sbindir}/$$i"; done;
  	for i in ${v6_sbin_links}; do ${LN_S} -f xtables-multi "${DESTDIR}${sbindir}/$$i"; done;
+ 	for i in ${x_sbin_links}; do ${LN_S} -f xtables-compat-multi "${DESTDIR}${sbindir}/$$i"; done;
 +	${LN_S} -f iptables-apply "${DESTDIR}${sbindir}/ip6tables-apply"
 --- /dev/null
 +++ b/iptables/ip6tables-apply.8
