@@ -6,7 +6,7 @@ XSBC-Pexip-Original-Maintainer: Laurence J. Lane <ljlane@debian.org>
 Build-Depends: debhelper (>= 9), autoconf, automake, libtool (>=2.2.6), libnfnetlink-dev, libnetfilter-conntrack-dev, libnetfilter-conntrack3, dh-autoreconf
 Standards-Version: 3.9.5
 Homepage: http://www.netfilter.org/
-XS-Pexip-Upstream: http://ftp.debian.org/debian/ jessie
+XS-Pexip-Upstream: http://ftp.debian.org/debian/ stretch
 
 Package: iptables
 Architecture: linux-any
