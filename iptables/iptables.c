@@ -99,7 +99,8 @@ static struct option original_opts[] = {
 	{.name = "numeric",       .has_arg = 0, .val = 'n'},
 	{.name = "out-interface", .has_arg = 1, .val = 'o'},
 	{.name = "verbose",       .has_arg = 0, .val = 'v'},
-	{.name = "wait",          .has_arg = 0, .val = 'w'},
+	{.name = "wait",          .has_arg = 2, .val = 'w'},
+	{.name = "wait-interval", .has_arg = 2, .val = 'W'},
 	{.name = "exact",         .has_arg = 0, .val = 'x'},
 	{.name = "fragments",     .has_arg = 0, .val = 'f'},
 	{.name = "version",       .has_arg = 0, .val = 'V'},
@@ -120,6 +121,7 @@ struct xtables_globals iptables_globals = {
 	.program_version = IPTABLES_VERSION,
 	.orig_opts = original_opts,
 	.exit_err = iptables_exit_error,
+	.compat_rev = xtables_compatible_revision,
 };
 
 /* Table of legal combinations of commands and options.  If any of the
@@ -252,7 +254,9 @@ exit_printhelp(const struct xtables_rule_match *matches)
 "				network interface name ([+] for wildcard)\n"
 "  --table	-t table	table to manipulate (default: `filter')\n"
 "  --verbose	-v		verbose mode\n"
-"  --wait	-w		wait for the xtables lock\n"
+"  --wait	-w [seconds]	maximum wait to acquire xtables lock before give up\n"
+"  --wait-interval -W [usecs]	wait time to try to acquire xtables lock\n"
+"				default is 1 second\n"
 "  --line-numbers		print line numbers when listing\n"
 "  --exact	-x		expand numbers (display exact values)\n"
 "[!] --fragment	-f		match second or further fragments only\n"
@@ -1036,7 +1040,7 @@ static int print_match_save(const struct xt_entry_match *e,
 	return 0;
 }
 
-/* print a given ip including mask if neccessary */
+/* Print a given ip including mask if necessary. */
 static void print_ip(const char *prefix, uint32_t ip,
 		     uint32_t mask, int invert)
 {
@@ -1066,8 +1070,9 @@ static void print_ip(const char *prefix, uint32_t ip,
 		printf("/%u.%u.%u.%u", IP_PARTS(mask));
 }
 
-/* We want this to be readable, so only print out neccessary fields.
- * Because that's the kind of world I want to live in.  */
+/* We want this to be readable, so only print out necessary fields.
+ * Because that's the kind of world I want to live in.
+ */
 void print_rule4(const struct ipt_entry *e,
 		struct xtc_handle *h, const char *chain, int counters)
 {
@@ -1316,9 +1321,12 @@ int do_command4(int argc, char *argv[], char **table,
 	unsigned int nsaddrs = 0, ndaddrs = 0;
 	struct in_addr *saddrs = NULL, *smasks = NULL;
 	struct in_addr *daddrs = NULL, *dmasks = NULL;
-
+	struct timeval wait_interval = {
+		.tv_sec = 1,
+	};
+	bool wait_interval_set = false;
 	int verbose = 0;
-	bool wait = false;
+	int wait = 0;
 	const char *chain = NULL;
 	const char *shostnetworkmask = NULL, *dhostnetworkmask = NULL;
 	const char *policy = NULL, *newname = NULL;
@@ -1351,10 +1359,9 @@ int do_command4(int argc, char *argv[], char **table,
 	/* Suppress error messages: we may add new options if we
            demand-load a protocol. */
 	opterr = 0;
-
 	opts = xt_params->orig_opts;
 	while ((cs.c = getopt_long(argc, argv,
-	   "-:A:C:D:R:I:L::S::M:F::Z::N:X::E:P:Vh::o:p:s:d:j:i:fbvwnt:m:xc:g:46",
+	   "-:A:C:D:R:I:L::S::M:F::Z::N:X::E:P:Vh::o:p:s:d:j:i:fbvw::W::nt:m:xc:g:46",
 					   opts, NULL)) != -1) {
 		switch (cs.c) {
 			/*
@@ -1596,7 +1603,33 @@ int do_command4(int argc, char *argv[], char **table,
 					      "You cannot use `-w' from "
 					      "iptables-restore");
 			}
-			wait = true;
+			wait = -1;
+			if (optarg) {
+				if (sscanf(optarg, "%i", &wait) != 1)
+					xtables_error(PARAMETER_PROBLEM,
+						"wait seconds not numeric");
+			} else if (optind < argc && argv[optind][0] != '-'
+						 && argv[optind][0] != '!')
+				if (sscanf(argv[optind++], "%i", &wait) != 1)
+					xtables_error(PARAMETER_PROBLEM,
+						"wait seconds not numeric");
+			break;
+
+		case 'W':
+			if (restore) {
+				xtables_error(PARAMETER_PROBLEM,
+					      "You cannot use `-W' from "
+					      "iptables-restore");
+			}
+			if (optarg)
+				parse_wait_interval(optarg, &wait_interval);
+			else if (optind < argc &&
+				 argv[optind][0] != '-' &&
+				 argv[optind][0] != '!')
+				parse_wait_interval(argv[optind++],
+						    &wait_interval);
+
+			wait_interval_set = true;
 			break;
 
 		case 'm':
@@ -1699,6 +1732,10 @@ int do_command4(int argc, char *argv[], char **table,
 		cs.invert = FALSE;
 	}
 
+	if (!wait && wait_interval_set)
+		xtables_error(PARAMETER_PROBLEM,
+			      "--wait-interval only makes sense with --wait\n");
+
 	if (strcmp(*table, "nat") == 0 &&
 	    ((policy != NULL && strcmp(policy, "DROP") == 0) ||
 	    (cs.jumpto != NULL && strcmp(cs.jumpto, "DROP") == 0)))
@@ -1749,9 +1786,12 @@ int do_command4(int argc, char *argv[], char **table,
 	generic_opt_check(command, cs.options);
 
 	/* Attempt to acquire the xtables lock */
-	if (!restore && !xtables_lock(wait)) {
-		fprintf(stderr, "Another app is currently holding the xtables lock. "
-			"Perhaps you want to use the -w option?\n");
+	if (!restore && !xtables_lock(wait, &wait_interval)) {
+		fprintf(stderr, "Another app is currently holding the xtables lock. ");
+		if (wait == 0)
+			fprintf(stderr, "Perhaps you want to use the -w option?\n");
+		else
+			fprintf(stderr, "Stopped waiting after %ds.\n", wait);
 		xtables_free_opts(1);
 		exit(RESOURCE_PROBLEM);
 	}
@@ -1826,10 +1866,11 @@ int do_command4(int argc, char *argv[], char **table,
 		}
 
 		if (!cs.target) {
-			/* it is no chain, and we can't load a plugin.
+			/* It is no chain, and we can't load a plugin.
 			 * We cannot know if the plugin is corrupt, non
-			 * existant OR if the user just misspelled a
-			 * chain. */
+			 * existent OR if the user just misspelled a
+			 * chain.
+			 */
 #ifdef IPT_F_GOTO
 			if (cs.fw.ip.flags & IPT_F_GOTO)
 				xtables_error(PARAMETER_PROBLEM,
