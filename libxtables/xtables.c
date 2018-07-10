@@ -13,7 +13,7 @@
  *
  *	You should have received a copy of the GNU General Public License
  *	along with this program; if not, write to the Free Software
- *	Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+ *	Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 #include "config.h"
 #include <ctype.h>
@@ -168,6 +168,19 @@ static const struct xtables_afinfo afinfo_ipv6 = {
 	.so_rev_target = IP6T_SO_GET_REVISION_TARGET,
 };
 
+/* Dummy families for arptables-compat and ebtables-compat. Leave structure
+ * fields that we don't use unset.
+ */
+static const struct xtables_afinfo afinfo_bridge = {
+	.libprefix     = "libebt_",
+	.family        = NFPROTO_BRIDGE,
+};
+
+static const struct xtables_afinfo afinfo_arp = {
+	.libprefix     = "libarpt_",
+	.family        = NFPROTO_ARP,
+};
+
 const struct xtables_afinfo *afinfo;
 
 /* Search path for Xtables .so files */
@@ -223,6 +236,12 @@ void xtables_set_nfproto(uint8_t nfproto)
 		break;
 	case NFPROTO_IPV6:
 		afinfo = &afinfo_ipv6;
+		break;
+	case NFPROTO_BRIDGE:
+		afinfo = &afinfo_bridge;
+		break;
+	case NFPROTO_ARP:
+		afinfo = &afinfo_arp;
 		break;
 	default:
 		fprintf(stderr, "libxtables: unhandled NFPROTO in %s\n",
@@ -348,6 +367,11 @@ int xtables_insmod(const char *modname, const char *modprobe, bool quiet)
 		modprobe = buf;
 	}
 
+	argv[0] = (char *)modprobe;
+	argv[1] = (char *)modname;
+	argv[2] = quiet ? "-q" : NULL;
+	argv[3] = NULL;
+
 	/*
 	 * Need to flush the buffer, or the child may output it again
 	 * when switching the program thru execv.
@@ -356,19 +380,10 @@ int xtables_insmod(const char *modname, const char *modprobe, bool quiet)
 
 	switch (vfork()) {
 	case 0:
-		argv[0] = (char *)modprobe;
-		argv[1] = (char *)modname;
-		if (quiet) {
-			argv[2] = "-q";
-			argv[3] = NULL;
-		} else {
-			argv[2] = NULL;
-			argv[3] = NULL;
-		}
 		execv(argv[0], argv);
 
 		/* not usually reached */
-		exit(1);
+		_exit(1);
 	case -1:
 		free(buf);
 		return -1;
@@ -540,7 +555,7 @@ void xtables_parse_interface(const char *arg, char *vianame,
 static void *load_extension(const char *search_path, const char *af_prefix,
     const char *name, bool is_target)
 {
-	const char *all_prefixes[] = {"libxt_", af_prefix, NULL};
+	const char *all_prefixes[] = {af_prefix, "libxt_", NULL};
 	const char **prefix;
 	const char *dir = search_path, *next;
 	void *ptr = NULL;
@@ -588,6 +603,16 @@ static void *load_extension(const char *search_path, const char *af_prefix,
 }
 #endif
 
+static bool extension_cmp(const char *name1, const char *name2, uint32_t family)
+{
+	if (strcmp(name1, name2) == 0 &&
+	    (family == afinfo->family ||
+	     family == NFPROTO_UNSPEC))
+		return true;
+
+	return false;
+}
+
 struct xtables_match *
 xtables_find_match(const char *name, enum xtables_tryload tryload,
 		   struct xtables_rule_match **matches)
@@ -610,7 +635,7 @@ xtables_find_match(const char *name, enum xtables_tryload tryload,
 
 	/* Trigger delayed initialization */
 	for (dptr = &xtables_pending_matches; *dptr; ) {
-		if (strcmp(name, (*dptr)->name) == 0) {
+		if (extension_cmp(name, (*dptr)->name, (*dptr)->family)) {
 			ptr = *dptr;
 			*dptr = (*dptr)->next;
 			ptr->next = NULL;
@@ -621,7 +646,7 @@ xtables_find_match(const char *name, enum xtables_tryload tryload,
 	}
 
 	for (ptr = xtables_matches; ptr; ptr = ptr->next) {
-		if (strcmp(name, ptr->name) == 0) {
+		if (extension_cmp(name, ptr->name, ptr->family)) {
 			struct xtables_match *clone;
 
 			/* First match of this type: */
@@ -671,7 +696,8 @@ xtables_find_match(const char *name, enum xtables_tryload tryload,
 		newentry = xtables_malloc(sizeof(struct xtables_rule_match));
 
 		for (i = matches; *i; i = &(*i)->next) {
-			if (strcmp(name, (*i)->match->name) == 0)
+			if (extension_cmp(name, (*i)->match->name,
+					  (*i)->match->family))
 				(*i)->completed = true;
 		}
 		newentry->match = ptr;
@@ -699,7 +725,7 @@ xtables_find_target(const char *name, enum xtables_tryload tryload)
 
 	/* Trigger delayed initialization */
 	for (dptr = &xtables_pending_targets; *dptr; ) {
-		if (strcmp(name, (*dptr)->name) == 0) {
+		if (extension_cmp(name, (*dptr)->name, (*dptr)->family)) {
 			ptr = *dptr;
 			*dptr = (*dptr)->next;
 			ptr->next = NULL;
@@ -710,7 +736,7 @@ xtables_find_target(const char *name, enum xtables_tryload tryload)
 	}
 
 	for (ptr = xtables_targets; ptr; ptr = ptr->next) {
-		if (strcmp(name, ptr->name) == 0)
+		if (extension_cmp(name, ptr->name, ptr->family))
 			break;
 	}
 
@@ -743,7 +769,7 @@ xtables_find_target(const char *name, enum xtables_tryload tryload)
 	return ptr;
 }
 
-static int compatible_revision(const char *name, uint8_t revision, int opt)
+int xtables_compatible_revision(const char *name, uint8_t revision, int opt)
 {
 	struct xt_get_revision rev;
 	socklen_t s = sizeof(rev);
@@ -799,12 +825,12 @@ static int compatible_revision(const char *name, uint8_t revision, int opt)
 
 static int compatible_match_revision(const char *name, uint8_t revision)
 {
-	return compatible_revision(name, revision, afinfo->so_rev_match);
+	return xt_params->compat_rev(name, revision, afinfo->so_rev_match);
 }
 
 static int compatible_target_revision(const char *name, uint8_t revision)
 {
-	return compatible_revision(name, revision, afinfo->so_rev_target);
+	return xt_params->compat_rev(name, revision, afinfo->so_rev_target);
 }
 
 static void xtables_check_options(const char *name, const struct option *opt)
@@ -1111,7 +1137,7 @@ void xtables_rule_matches_free(struct xtables_rule_match **matches)
  *
  * %XTF_BAD_VALUE: bad value for option
  * @p1:		module name
- * @p2:		option with which the problem occured (e.g. "--mark")
+ * @p2:		option with which the problem occurred (e.g. "--mark")
  * @p3:		string the user passed in (e.g. "99999999999999")
  *
  * %XTF_ONE_ACTION: two mutually exclusive actions have been specified
@@ -1327,22 +1353,36 @@ static struct in_addr *network_to_ipaddr(const char *name)
 
 static struct in_addr *host_to_ipaddr(const char *name, unsigned int *naddr)
 {
-	struct hostent *host;
 	struct in_addr *addr;
+	struct addrinfo hints;
+	struct addrinfo *res, *p;
+	int err;
 	unsigned int i;
 
-	*naddr = 0;
-	if ((host = gethostbyname(name)) != NULL) {
-		if (host->h_addrtype != AF_INET ||
-		    host->h_length != sizeof(struct in_addr))
-			return NULL;
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_flags    = AI_CANONNAME;
+	hints.ai_family   = AF_INET;
+	hints.ai_socktype = SOCK_RAW;
 
-		while (host->h_addr_list[*naddr] != NULL)
+	*naddr = 0;
+	if ((err = getaddrinfo(name, NULL, &hints, &res)) != 0) {
+#ifdef DEBUG
+		fprintf(stderr,"Name2IP: %s\n",gai_strerror(err));
+#endif
+		return NULL;
+	} else {
+		for (p = res; p != NULL; p = p->ai_next)
 			++*naddr;
+#ifdef DEBUG
+		fprintf(stderr, "resolved: len=%d  %s ", res->ai_addrlen,
+		        xtables_ipaddr_to_numeric(&((struct sockaddr_in *)res->ai_addr)->sin_addr));
+#endif
 		addr = xtables_calloc(*naddr, sizeof(struct in_addr));
-		for (i = 0; i < *naddr; i++)
-			memcpy(&addr[i], host->h_addr_list[i],
+		for (i = 0, p = res; p != NULL; p = p->ai_next)
+			memcpy(&addr[i++],
+			       &((const struct sockaddr_in *)p->ai_addr)->sin_addr,
 			       sizeof(struct in_addr));
+		freeaddrinfo(res);
 		return addr;
 	}
 
@@ -1702,8 +1742,9 @@ static struct in6_addr *parse_ip6mask(char *mask)
 	if (bits != 0) {
 		char *p = (void *)&maskaddr;
 		memset(p, 0xff, bits / 8);
-		memset(p + (bits / 8) + 1, 0, (128 - bits) / 8);
-		p[bits/8] = 0xff << (8 - (bits & 7));
+		memset(p + ((bits + 7) / 8), 0, (128 - bits) / 8);
+		if (bits < 128)
+			p[bits/8] = 0xff << (8 - (bits & 7));
 		return &maskaddr;
 	}
 
@@ -1958,4 +1999,73 @@ void get_kernel_version(void)
 
 	sscanf(uts.release, "%d.%d.%d", &x, &y, &z);
 	kernel_version = LINUX_VERSION(x, y, z);
+}
+
+#include <linux/netfilter/nf_tables.h>
+
+struct xt_xlate {
+	struct {
+		char	*data;
+		int	size;
+		int	rem;
+		int	off;
+	} buf;
+	char comment[NFT_USERDATA_MAXLEN];
+};
+
+struct xt_xlate *xt_xlate_alloc(int size)
+{
+	struct xt_xlate *xl;
+
+	xl = malloc(sizeof(struct xt_xlate));
+	if (xl == NULL)
+		xtables_error(RESOURCE_PROBLEM, "OOM");
+
+	xl->buf.data = malloc(size);
+	if (xl->buf.data == NULL)
+		xtables_error(RESOURCE_PROBLEM, "OOM");
+
+	xl->buf.size = size;
+	xl->buf.rem = size;
+	xl->buf.off = 0;
+	xl->comment[0] = '\0';
+
+	return xl;
+}
+
+void xt_xlate_free(struct xt_xlate *xl)
+{
+	free(xl->buf.data);
+	free(xl);
+}
+
+void xt_xlate_add(struct xt_xlate *xl, const char *fmt, ...)
+{
+	va_list ap;
+	int len;
+
+	va_start(ap, fmt);
+	len = vsnprintf(xl->buf.data + xl->buf.off, xl->buf.rem, fmt, ap);
+	if (len < 0 || len >= xl->buf.rem)
+		xtables_error(RESOURCE_PROBLEM, "OOM");
+
+	va_end(ap);
+	xl->buf.rem -= len;
+	xl->buf.off += len;
+}
+
+void xt_xlate_add_comment(struct xt_xlate *xl, const char *comment)
+{
+	strncpy(xl->comment, comment, NFT_USERDATA_MAXLEN - 1);
+	xl->comment[NFT_USERDATA_MAXLEN - 1] = '\0';
+}
+
+const char *xt_xlate_get_comment(struct xt_xlate *xl)
+{
+	return xl->comment[0] ? xl->comment : NULL;
+}
+
+const char *xt_xlate_get(struct xt_xlate *xl)
+{
+	return xl->buf.data;
 }
