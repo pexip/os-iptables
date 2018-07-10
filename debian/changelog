@@ -1,3 +1,9 @@
+iptables (1.6.0+snapshot20161117-6pexip1) pexip; urgency=medium
+
+  * Migrate to Stretch
+
+ -- John-Mark Bell <jmb@pexip.com>  Tue, 10 Jul 2018 11:02:19 +0000
+
 iptables (1.6.0+snapshot20161117-6) unstable; urgency=medium
 
   * [3db1c4d] d/patches: add
