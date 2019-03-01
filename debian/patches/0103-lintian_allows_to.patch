@@ -62,7 +62,7 @@ Description: cleanup "allows to", triggered lintian grammar warning
  		"       1                       log only first one.\n"
 --- a/iptables/iptables.8.in
 +++ b/iptables/iptables.8.in
-@@ -244,13 +244,13 @@
+@@ -245,13 +245,13 @@
  This option has no effect in iptables and iptables-restore.
  If a rule using the \fB\-4\fP option is inserted with (and only with)
  ip6tables-restore, it will be silently ignored. Any other uses will throw an

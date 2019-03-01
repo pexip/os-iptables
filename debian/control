@@ -1,8 +1,9 @@
 Source: iptables
 Section: net
 Priority: important
-Maintainer: Arturo Borrero Gonzalez <arturo@debian.org>
-Uploaders: Laurence J. Lane <ljlane@debian.org>
+Maintainer: Debian Netfilter Packaging Team <pkg-netfilter-team@lists.alioth.debian.org>
+Uploaders: Arturo Borrero Gonzalez <arturo@debian.org>,
+           Laurence J. Lane <ljlane@debian.org>
 Build-Depends: autoconf,
                automake,
                bison,
@@ -14,10 +15,10 @@ Build-Depends: autoconf,
                libnfnetlink-dev,
                libnftnl-dev,
                libtool (>= 2.2.6)
-Standards-Version: 3.9.8
+Standards-Version: 4.3.0
 Homepage: http://www.netfilter.org/
-Vcs-Git: https://anonscm.debian.org/git/pkg-netfilter/pkg-iptables.git
-Vcs-Browser: https://anonscm.debian.org/git/pkg-netfilter/pkg-iptables.git
+Vcs-Git: https://salsa.debian.org/pkg-netfilter-team/pkg-iptables
+Vcs-Browser: https://salsa.debian.org/pkg-netfilter-team/pkg-iptables
 
 Package: iptables
 Multi-Arch: foreign
@@ -29,13 +30,30 @@ Depends: libip4tc0 (=${binary:Version}),
          ${misc:Depends},
          ${shlibs:Depends}
 Suggests: kmod
+Breaks: iptables-nftables-compat (<< 1.6.2~)
+Replaces: iptables-nftables-compat (<< 1.6.2~)
+Recommends: nftables
 Description: administration tools for packet filtering and NAT
+ The iptables/xtables framework has been replaced by nftables. You should
+ consider migrating now.
+ .
  iptables is the userspace command line program used to configure
- the Linux packet filtering ruleset. It is targeted towards system
- administrators. Since Network Address Translation is also configured
- from the packet filter ruleset, iptables is used for this, too. The
- iptables package also includes ip6tables. ip6tables is used for
- configuring the IPv6 packet filter
+ the Linux packet filtering and NAT ruleset. It is targeted towards systems
+ and networks administrators.
+ .
+ This package contains several different utilities, the most important ones:
+ .
+ iptables, iptables-save, iptables-restore (nft-based version)
+ .
+ iptables, iptables-save, iptables-restore (legacy version)
+ .
+ ip6tables, ip6tables-save, ip6tables-restore (nft-based version)
+ .
+ ip6tables, ip6tables-save, ip6tables-restore (legacy version)
+ .
+ arptables, arptables-save, arptables-restore (nft-based version)
+ .
+ ebtables, ebtables-save, ebtables-restore (nft-based version)
 
 Package: iptables-dev
 Depends: libip4tc-dev (>= ${source:Version}),
@@ -43,8 +61,9 @@ Depends: libip4tc-dev (>= ${source:Version}),
          libiptc-dev (>= ${source:Version}),
          libxtables-dev (>= ${source:Version}),
          ${misc:Depends}
-Architecture: all
-Priority: extra
+Architecture: any
+Multi-Arch: same
+Priority: optional
 Section: oldlibs
 Description: transitional dummy package
  This is a transitional dummy package. It can safely be removed.
@@ -58,10 +77,15 @@ Depends: ${misc:Depends}, ${shlibs:Depends}
 Replaces: iptables (<< 1.4.16.3-3), libxtables11 (>= 1.6.0+snapshot20161117-1)
 Breaks: iptables (<< 1.4.16.3-3), libxtables11 (>= 1.6.0+snapshot20161117-1)
 Description: netfilter xtables library
- The user-space interface to the Netfilter xtables kernel framework.
+ The iptables/xtables framework has been replaced by nftables. You should
+ consider migrating now.
+ .
+ This package contains the user-space interface to the Netfilter xtables
+ kernel framework.
 
 Package: libxtables-dev
 Architecture: linux-any
+Multi-Arch: same
 Priority: optional
 Pre-Depends: ${misc:Pre-Depends}
 Depends: libxtables12 (=${binary:Version}), ${misc:Depends}
@@ -69,7 +93,8 @@ Replaces: iptables-dev (<< 1.6.0-3)
 Breaks: iptables-dev (<< 1.6.0-3)
 Section: libdevel
 Description: netfilter xtables library -- development files
- The user-space interface to the Netfilter xtables kernel framework.
+ The iptables/xtables framework has been replaced by nftables. You should
+ consider migrating now.
  .
  This package includes the development files of libxtables.
 
@@ -81,7 +106,11 @@ Section: libs
 Pre-Depends: ${misc:Pre-Depends}
 Depends: ${misc:Depends}, ${shlibs:Depends}
 Description: netfilter libiptc library
- The user-space iptables C library from the Netfilter xtables framework.
+ The iptables/xtables framework has been replaced by nftables. You should
+ consider migrating now.
+ .
+ This package contains the user-space iptables C library from the Netfilter
+ xtables framework.
  .
  iptables v4/v6 ruleset ADT and kernel interface.
  .
@@ -90,6 +119,7 @@ Description: netfilter libiptc library
 
 Package: libiptc-dev
 Architecture: linux-any
+Multi-Arch: same
 Priority: optional
 Pre-Depends: ${misc:Pre-Depends}
 Depends: libip4tc-dev (=${binary:Version}),
@@ -100,12 +130,10 @@ Replaces: iptables-dev (<< 1.6.0-3)
 Breaks: iptables-dev (<< 1.6.0-3)
 Section: libdevel
 Description: Development files for libiptc
- The user-space iptables C library from the Netfilter xtables framework.
+ The iptables/xtables framework has been replaced by nftables. You should
+ consider migrating now.
  .
- This library has been considered private for years (and still is), in the
- sense of changing symbols and backward compatibility not guaranteed.
- .
- This package provides development files and static libraries.
+ This package provides development files and static libraries for libiptc.
 
 Package: libip4tc0
 Priority: optional
@@ -115,7 +143,11 @@ Section: libs
 Pre-Depends: ${misc:Pre-Depends}
 Depends: ${misc:Depends}, ${shlibs:Depends}
 Description: netfilter libip4tc library
- The user-space iptables (IPv4) C library from the Netfilter xtables framework.
+ The iptables/xtables framework has been replaced by nftables. You should
+ consider migrating now.
+ .
+ This package contains the user-space iptables (IPv4) C library from the
+ Netfilter xtables framework.
  .
  iptables IPv4 ruleset ADT and kernel interface.
  .
@@ -124,6 +156,7 @@ Description: netfilter libip4tc library
 
 Package: libip4tc-dev
 Architecture: linux-any
+Multi-Arch: same
 Priority: optional
 Pre-Depends: ${misc:Pre-Depends}
 Depends: libip4tc0 (=${binary:Version}),
@@ -133,12 +166,10 @@ Replaces: iptables-dev (<< 1.6.0-3)
 Breaks: iptables-dev (<< 1.6.0-3)
 Section: libdevel
 Description: Development files for libip4tc
- The user-space iptables (IPv4) C library from the Netfilter xtables framework.
+ The iptables/xtables framework has been replaced by nftables. You should
+ consider migrating now.
  .
- This library has been considered private for years (and still is), in the
- sense of changing symbols and backward compatibility not guaranteed.
- .
- This package provides development files and static libraries.
+ This package provides development files and static libraries for libip4tc.
 
 Package: libip6tc0
 Priority: optional
@@ -148,7 +179,11 @@ Section: libs
 Pre-Depends: ${misc:Pre-Depends}
 Depends: ${misc:Depends}, ${shlibs:Depends}
 Description: netfilter libip6tc library
- The user-space iptables (IPv6) C library from the Netfilter xtables framework.
+ The iptables/xtables framework has been replaced by nftables. You should
+ consider migrating now.
+ .
+ This package contains the user-space iptables (IPv6) C library from the
+ Netfilter xtables framework.
  .
  iptables IPv6 ruleset ADT and kernel interface.
  .
@@ -157,6 +192,7 @@ Description: netfilter libip6tc library
 
 Package: libip6tc-dev
 Architecture: linux-any
+Multi-Arch: same
 Priority: optional
 Pre-Depends: ${misc:Pre-Depends}
 Depends: libip6tc0 (=${binary:Version}),
@@ -166,40 +202,7 @@ Replaces: iptables-dev (<< 1.6.0-3)
 Breaks: iptables-dev (<< 1.6.0-3)
 Section: libdevel
 Description: Development files for libip6tc
- The user-space iptables (IPv6) C library from the Netfilter xtables framework.
+ The iptables/xtables framework has been replaced by nftables. You should
+ consider migrating now.
  .
- This library has been considered private for years (and still is), in the
- sense of changing symbols and backward compatibility not guaranteed.
- .
- This package provides development files and static libraries.
-
-Package: iptables-nftables-compat
-Architecture: linux-any
-Priority: optional
-Depends: arptables,
-         ebtables,
-         iptables (=${binary:Version}),
-         libxtables12 (=${binary:Version}),
-         ${misc:Depends},
-         ${shlibs:Depends}
-Recommends: nftables
-Suggests: kmod
-Description: iptables compat tools for nftables
- this package includes the compat tools to load iptables, ip6tables, arptables
- and ebtables rules to the nf_tables kernel subsystem.
- .
- The tools are called: 'iptables-compat', 'iptables-compat-save',
- 'iptables-compat-restore', 'ip6tables-compat', 'ip6tables-compat-save',
- 'ip6tables-compat-restore', 'arptables-compat' and 'ebtables-compat'.
- .
- .
- A basic way to understand this compat stuff is to load the ruleset
- skeleton, i.e: a first call `iptables-compat -L'. Then, you can use nft,
- i.e: `nft list ruleset'. Same for the other families.
- .
- Also, this package contains the translation tools, which are
- 'iptables-translate', 'ip6tables-translate', 'iptables-restore-translate',
- and 'ip6tables-restore-translate'.
- .
- These translation tools works by reading an input in iptables native syntax
- and then  printing the nftables syntax equivalent.
+ This package provides development files and static libraries for libip6tc.

@@ -14,17 +14,23 @@
 #include <time.h>
 #include <netdb.h>
 #include <arpa/inet.h>
+#include <unistd.h>
 #include "libiptc/libip6tc.h"
 #include "ip6tables.h"
 #include "ip6tables-multi.h"
 
-static int show_counters = 0;
+#define prog_name ip6tables_globals.program_name
+#define prog_vers ip6tables_globals.program_version
+
+static int show_counters;
 
 static const struct option options[] = {
 	{.name = "counters", .has_arg = false, .val = 'c'},
 	{.name = "dump",     .has_arg = false, .val = 'd'},
 	{.name = "table",    .has_arg = true,  .val = 't'},
 	{.name = "modprobe", .has_arg = true,  .val = 'M'},
+	{.name = "file",     .has_arg = true,  .val = 'f'},
+	{.name = "version",  .has_arg = false, .val = 'V'},
 	{NULL},
 };
 
@@ -35,10 +41,16 @@ static int for_each_table(int (*func)(const char *tablename))
 	int ret = 1;
 	FILE *procfile = NULL;
 	char tablename[XT_TABLE_MAXNAMELEN+1];
+	static const char filename[] = "/proc/net/ip6_tables_names";
 
-	procfile = fopen("/proc/net/ip6_tables_names", "re");
-	if (!procfile)
-		return ret;
+	procfile = fopen(filename, "re");
+	if (!procfile) {
+		if (errno == ENOENT)
+			return ret;
+		fprintf(stderr, "Failed to list table names in %s: %s\n",
+		        filename, strerror(errno));
+		exit(1);
+	}
 
 	while (fgets(tablename, sizeof(tablename), procfile)) {
 		if (tablename[strlen(tablename) - 1] != '\n')
@@ -122,7 +134,8 @@ static int do_output(const char *tablename)
 int ip6tables_save_main(int argc, char *argv[])
 {
 	const char *tablename = NULL;
-	int c;
+	FILE *file = NULL;
+	int ret, c;
 
 	ip6tables_globals.program_name = "ip6tables-save";
 	c = xtables_init_all(&ip6tables_globals, NFPROTO_IPV6);
@@ -137,7 +150,7 @@ int ip6tables_save_main(int argc, char *argv[])
 	init_extensions6();
 #endif
 
-	while ((c = getopt_long(argc, argv, "bcdt:M:", options, NULL)) != -1) {
+	while ((c = getopt_long(argc, argv, "bcdt:M:f:V", options, NULL)) != -1) {
 		switch (c) {
 		case 'b':
 			fprintf(stderr, "-b/--binary option is not implemented\n");
@@ -153,9 +166,31 @@ int ip6tables_save_main(int argc, char *argv[])
 		case 'M':
 			xtables_modprobe_program = optarg;
 			break;
+		case 'f':
+			file = fopen(optarg, "w");
+			if (file == NULL) {
+				fprintf(stderr, "Failed to open file, error: %s\n",
+					strerror(errno));
+				exit(1);
+			}
+			ret = dup2(fileno(file), STDOUT_FILENO);
+			if (ret == -1) {
+				fprintf(stderr, "Failed to redirect stdout, error: %s\n",
+					strerror(errno));
+				exit(1);
+			}
+			fclose(file);
+			break;
 		case 'd':
 			do_output(tablename);
 			exit(0);
+		case 'V':
+			printf("%s v%s (legacy)\n", prog_name, prog_vers);
+			exit(0);
+		default:
+			fprintf(stderr,
+				"Look at manual page `ip6tables-save.8' for more information.\n");
+			exit(1);
 		}
 	}
 

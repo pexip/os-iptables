@@ -12,13 +12,13 @@ fixed a couple of hyphens in the man page addition.
 
 Signed-off-by: Laurence J. Lane <ljlane@debian.org>
 ---
- iptables/iptables-apply      | 304 ++++++++++++++++++++++++++++++-------------
- iptables/iptables-apply.8.in |  46 ++++---
- 2 files changed, 243 insertions(+), 107 deletions(-)
+ iptables-apply      |  310 ++++++++++++++++++++++++++++++++++++----------------
+ iptables-apply.8.in |   48 +++++---
+ 2 files changed, 247 insertions(+), 111 deletions(-)
 
 --- a/iptables/iptables-apply
 +++ b/iptables/iptables-apply
-@@ -1,173 +1,293 @@
+@@ -1,174 +1,294 @@
  #!/bin/bash
 -#
  # iptables-apply -- a safer way to update iptables remotely
@@ -68,14 +68,14 @@ Signed-off-by: Laurence J. Lane <ljlane@debian.org>
 +		DEF_RUNCMD="/etc/network/iptables.up.run"
 +		;;
 +esac
++
  
 -TIMEOUT=10
++### Functions
  
 -function blurb()
 -{
 -	cat <<-_eof
-+### Functions
-+
 +function blurb() {
 +	cat <<-__EOF__
  	$PROGNAME $VERSION -- a safer way to update iptables remotely
@@ -163,10 +163,8 @@ Signed-off-by: Laurence J. Lane <ljlane@debian.org>
 +	  Display version information.
 +
 +	__EOF__
- }
- 
--SHORTOPTS="t:Vh";
--LONGOPTS="timeout:,version,help";
++}
++
 +function checkcommands() {
 +	for cmd in "${COMMANDS[@]}"; do
 +		if ! command -v "$cmd" >/dev/null; then
@@ -180,8 +178,10 @@ Signed-off-by: Laurence J. Lane <ljlane@debian.org>
 +	echo -n "Reverting to old iptables rules... "
 +	"$RESTORE" <"$TMPFILE"
 +	echo "done."
-+}
-+
+ }
+ 
+-SHORTOPTS="t:Vh";
+-LONGOPTS="timeout:,version,help";
 +
 +### Parsing and checking parameters
 +
@@ -272,7 +272,13 @@ Signed-off-by: Laurence J. Lane <ljlane@debian.org>
 +			echo "Error: runcmd not executable: $RUNCMD" >&2
 +			exit 6
 +		fi
-+
+ 
+-for cmd in "${COMMANDS[@]}"; do
+-	if ! command -v $cmd >/dev/null; then
+-		echo "E: command not found: $cmd" >&2
+-		exit 127
+-	fi
+-done
 +		# Needed commands
 +		COMMANDS=(mktemp "$SAVE" "$RESTORE" "$RUNCMD")
 +		checkcommands
@@ -284,27 +290,22 @@ Signed-off-by: Laurence J. Lane <ljlane@debian.org>
 +			echo "Error: rulesfile not readable: $RULESFILE" >&2
 +			exit 2
 +		fi
-+
+ 
+-umask 0700
 +		# Needed commands
 +		COMMANDS=(mktemp "$SAVE" "$RESTORE")
 +		checkcommands
 +		;;
 +esac
  
--for cmd in "${COMMANDS[@]}"; do
--	if ! command -v $cmd >/dev/null; then
--		echo "E: command not found: $cmd" >&2
--		exit 127
--	fi
--done
- 
--umask 0700
-+### Begin work
- 
 -TMPFILE=$(tempfile -p iptap)
++
++### Begin work
++
 +# Store old iptables rules to temporary file
 +TMPFILE=`mktemp /tmp/$PROGNAME-XXXXXXXX`
- trap "rm -f $TMPFILE" EXIT 1 2 3 4 5 6 7 8 10 11 12 13 14 15
+ trap "rm -f $TMPFILE" EXIT HUP INT QUIT ILL TRAP ABRT BUS \
+ 		      FPE USR1 SEGV USR2 PIPE ALRM TERM
  
  if ! "$SAVE" >"$TMPFILE"; then
 +	# An error occured
@@ -328,7 +329,7 @@ Signed-off-by: Laurence J. Lane <ljlane@debian.org>
 -	echo "E: unknown error applying new iptables ruleset." >&2
 -	exit 5
 -else
--	echo done.
+-	echo "done."
 -fi
 +# Configure iptables
 +case "$MODE" in
@@ -371,7 +372,6 @@ Signed-off-by: Laurence J. Lane <ljlane@debian.org>
  	(y*|Y*)
 +		# Success
  		echo
--		echo ... then my job is done. See you next time.
 +
 +		if [ ! -z "$SAVEFILE" ]; then
 +			# Write successfully applied rules to the savefile
@@ -382,7 +382,7 @@ Signed-off-by: Laurence J. Lane <ljlane@debian.org>
 +			fi
 +		fi
 +
-+		echo "... then my job is done. See you next time."
+ 		echo "... then my job is done. See you next time."
  		;;
  	(*)
 -		if [[ -z "${ret:-}" ]]; then
@@ -398,7 +398,7 @@ Signed-off-by: Laurence J. Lane <ljlane@debian.org>
 -		echo "Timeout. Something happened (or did not). Better play it safe..."
 -		echo -n "Reverting to old ruleset... "
 -		"$RESTORE" <"$TMPFILE";
--		echo done.
+-		echo "done."
 +		revertrules
  		exit 255
  		;;

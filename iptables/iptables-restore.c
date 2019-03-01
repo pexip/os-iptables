@@ -12,46 +12,48 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "iptables.h"
+#include "xshared.h"
 #include "xtables.h"
 #include "libiptc/libiptc.h"
 #include "iptables-multi.h"
 
-#ifdef DEBUG
-#define DEBUGP(x, args...) fprintf(stderr, x, ## args)
-#else
-#define DEBUGP(x, args...)
-#endif
+static int counters, verbose, noflush, wait;
 
-static int counters = 0, verbose = 0, noflush = 0;
+static struct timeval wait_interval = {
+	.tv_sec	= 1,
+};
 
 /* Keeping track of external matches and targets.  */
 static const struct option options[] = {
-	{.name = "counters", .has_arg = false, .val = 'c'},
-	{.name = "verbose",  .has_arg = false, .val = 'v'},
-	{.name = "test",     .has_arg = false, .val = 't'},
-	{.name = "help",     .has_arg = false, .val = 'h'},
-	{.name = "noflush",  .has_arg = false, .val = 'n'},
-	{.name = "modprobe", .has_arg = true,  .val = 'M'},
-	{.name = "table",    .has_arg = true,  .val = 'T'},
+	{.name = "counters",      .has_arg = 0, .val = 'c'},
+	{.name = "verbose",       .has_arg = 0, .val = 'v'},
+	{.name = "version",       .has_arg = 0, .val = 'V'},
+	{.name = "test",          .has_arg = 0, .val = 't'},
+	{.name = "help",          .has_arg = 0, .val = 'h'},
+	{.name = "noflush",       .has_arg = 0, .val = 'n'},
+	{.name = "modprobe",      .has_arg = 1, .val = 'M'},
+	{.name = "table",         .has_arg = 1, .val = 'T'},
+	{.name = "wait",          .has_arg = 2, .val = 'w'},
+	{.name = "wait-interval", .has_arg = 2, .val = 'W'},
 	{NULL},
 };
 
-static void print_usage(const char *name, const char *version) __attribute__((noreturn));
-
 #define prog_name iptables_globals.program_name
+#define prog_vers iptables_globals.program_version
 
 static void print_usage(const char *name, const char *version)
 {
-	fprintf(stderr, "Usage: %s [-c] [-v] [-t] [-h] [-n] [-T table] [-M command]\n"
+	fprintf(stderr, "Usage: %s [-c] [-v] [-V] [-t] [-h] [-n] [-w secs] [-W usecs] [-T table] [-M command]\n"
 			"	   [ --counters ]\n"
 			"	   [ --verbose ]\n"
+			"	   [ --version]\n"
 			"	   [ --test ]\n"
 			"	   [ --help ]\n"
 			"	   [ --noflush ]\n"
+			"	   [ --wait=<seconds>\n"
+			"	   [ --wait-interval=<usecs>\n"
 			"	   [ --table=<TABLE> ]\n"
-			"          [ --modprobe=<command> ]\n", name);
-
-	exit(1);
+			"	   [ --modprobe=<command> ]\n", name);
 }
 
 static struct xtc_handle *create_handle(const char *tablename)
@@ -74,120 +76,20 @@ static struct xtc_handle *create_handle(const char *tablename)
 	return handle;
 }
 
-static int parse_counters(char *string, struct xt_counters *ctr)
-{
-	unsigned long long pcnt, bcnt;
-	int ret;
-
-	ret = sscanf(string, "[%llu:%llu]", &pcnt, &bcnt);
-	ctr->pcnt = pcnt;
-	ctr->bcnt = bcnt;
-	return ret == 2;
-}
-
-/* global new argv and argc */
-static char *newargv[255];
-static int newargc;
-
-/* function adding one argument to newargv, updating newargc 
- * returns true if argument added, false otherwise */
-static int add_argv(char *what) {
-	DEBUGP("add_argv: %s\n", what);
-	if (what && newargc + 1 < ARRAY_SIZE(newargv)) {
-		newargv[newargc] = strdup(what);
-		newargv[++newargc] = NULL;
-		return 1;
-	} else {
-		xtables_error(PARAMETER_PROBLEM,
-			"Parser cannot handle more arguments\n");
-		return 0;
-	}
-}
-
-static void free_argv(void) {
-	int i;
-
-	for (i = 0; i < newargc; i++)
-		free(newargv[i]);
-}
-
-static void add_param_to_argv(char *parsestart)
-{
-	int quote_open = 0, escaped = 0, param_len = 0;
-	char param_buffer[1024], *curchar;
-
-	/* After fighting with strtok enough, here's now
-	 * a 'real' parser. According to Rusty I'm now no
-	 * longer a real hacker, but I can live with that */
-
-	for (curchar = parsestart; *curchar; curchar++) {
-		if (quote_open) {
-			if (escaped) {
-				param_buffer[param_len++] = *curchar;
-				escaped = 0;
-				continue;
-			} else if (*curchar == '\\') {
-				escaped = 1;
-				continue;
-			} else if (*curchar == '"') {
-				quote_open = 0;
-				*curchar = ' ';
-			} else {
-				param_buffer[param_len++] = *curchar;
-				continue;
-			}
-		} else {
-			if (*curchar == '"') {
-				quote_open = 1;
-				continue;
-			}
-		}
-
-		if (*curchar == ' '
-		    || *curchar == '\t'
-		    || * curchar == '\n') {
-			if (!param_len) {
-				/* two spaces? */
-				continue;
-			}
-
-			param_buffer[param_len] = '\0';
-
-			/* check if table name specified */
-			if (!strncmp(param_buffer, "-t", 2)
-			    || !strncmp(param_buffer, "--table", 8)) {
-				xtables_error(PARAMETER_PROBLEM,
-				"The -t option (seen in line %u) cannot be "
-				"used in iptables-restore.\n", line);
-				exit(1);
-			}
-
-			add_argv(param_buffer);
-			param_len = 0;
-		} else {
-			/* regular character, copy to buffer */
-			param_buffer[param_len++] = *curchar;
-
-			if (param_len >= sizeof(param_buffer))
-				xtables_error(PARAMETER_PROBLEM,
-				   "Parameter too long!");
-		}
-	}
-}
-
 int
 iptables_restore_main(int argc, char *argv[])
 {
 	struct xtc_handle *handle = NULL;
 	char buffer[10240];
-	int c;
-	char curtable[XT_TABLE_MAXNAMELEN + 1];
+	int c, lock;
+	char curtable[XT_TABLE_MAXNAMELEN + 1] = {};
 	FILE *in;
 	int in_table = 0, testing = 0;
 	const char *tablename = NULL;
 	const struct xtc_ops *ops = &iptc_ops;
 
 	line = 0;
+	lock = XT_LOCK_NOT_ACQUIRED;
 
 	iptables_globals.program_name = "iptables-restore";
 	c = xtables_init_all(&iptables_globals, NFPROTO_IPV4);
@@ -202,7 +104,7 @@ iptables_restore_main(int argc, char *argv[])
 	init_extensions4();
 #endif
 
-	while ((c = getopt_long(argc, argv, "bcvthnM:T:", options, NULL)) != -1) {
+	while ((c = getopt_long(argc, argv, "bcvVthnwWM:T:", options, NULL)) != -1) {
 		switch (c) {
 			case 'b':
 				fprintf(stderr, "-b/--binary option is not implemented\n");
@@ -213,15 +115,24 @@ iptables_restore_main(int argc, char *argv[])
 			case 'v':
 				verbose = 1;
 				break;
+			case 'V':
+				printf("%s v%s (legacy)\n", prog_name, prog_vers);
+				exit(0);
 			case 't':
 				testing = 1;
 				break;
 			case 'h':
 				print_usage("iptables-restore",
 					    IPTABLES_VERSION);
-				break;
+				exit(0);
 			case 'n':
 				noflush = 1;
+				break;
+			case 'w':
+				wait = parse_wait_time(argc, argv);
+				break;
+			case 'W':
+				parse_wait_interval(argc, argv, &wait_interval);
 				break;
 			case 'M':
 				xtables_modprobe_program = optarg;
@@ -229,6 +140,10 @@ iptables_restore_main(int argc, char *argv[])
 			case 'T':
 				tablename = optarg;
 				break;
+			default:
+				fprintf(stderr,
+					"Try `iptables-restore -h' for more information.\n");
+				exit(1);
 		}
 	}
 
@@ -245,6 +160,11 @@ iptables_restore_main(int argc, char *argv[])
 		exit(1);
 	}
 	else in = stdin;
+
+	if (!wait_interval.tv_sec && !wait) {
+		fprintf(stderr, "Option --wait-interval requires option --wait\n");
+		exit(1);
+	}
 
 	/* Grab standard input. */
 	while (fgets(buffer, sizeof(buffer), in)) {
@@ -267,8 +187,18 @@ iptables_restore_main(int argc, char *argv[])
 				DEBUGP("Not calling commit, testing\n");
 				ret = 1;
 			}
+
+			/* Done with the current table, release the lock. */
+			if (lock >= 0) {
+				xtables_unlock(lock);
+				lock = XT_LOCK_NOT_ACQUIRED;
+			}
+
 			in_table = 0;
 		} else if ((buffer[0] == '*') && (!in_table)) {
+			/* Acquire a lock before we create a new table handle */
+			lock = xtables_lock_or_exit(wait, &wait_interval);
+
 			/* New table */
 			char *table;
 
@@ -283,8 +213,13 @@ iptables_restore_main(int argc, char *argv[])
 			strncpy(curtable, table, XT_TABLE_MAXNAMELEN);
 			curtable[XT_TABLE_MAXNAMELEN] = '\0';
 
-			if (tablename && (strcmp(tablename, table) != 0))
+			if (tablename && (strcmp(tablename, table) != 0)) {
+				if (lock >= 0) {
+					xtables_unlock(lock);
+					lock = XT_LOCK_NOT_ACQUIRED;
+				}
 				continue;
+			}
 			if (handle)
 				ops->free(handle);
 
@@ -351,7 +286,7 @@ iptables_restore_main(int argc, char *argv[])
 			}
 
 			if (strcmp(policy, "-") != 0) {
-				struct xt_counters count;
+				struct xt_counters count = {};
 
 				if (counters) {
 					char *ctrs;
@@ -361,9 +296,6 @@ iptables_restore_main(int argc, char *argv[])
 						xtables_error(PARAMETER_PROBLEM,
 							   "invalid policy counters "
 							   "for chain '%s'\n", chain);
-
-				} else {
-					memset(&count, 0, sizeof(count));
 				}
 
 				DEBUGP("Setting policy of chain %s to %s\n",
@@ -382,17 +314,14 @@ iptables_restore_main(int argc, char *argv[])
 
 		} else if (in_table) {
 			int a;
-			char *ptr = buffer;
 			char *pcnt = NULL;
 			char *bcnt = NULL;
 			char *parsestart;
 
-			/* reset the newargv */
-			newargc = 0;
-
 			if (buffer[0] == '[') {
 				/* we have counters in our input */
-				ptr = strchr(buffer, ']');
+				char *ptr = strchr(buffer, ']');
+
 				if (!ptr)
 					xtables_error(PARAMETER_PROBLEM,
 						   "Bad line %u: need ]\n",
@@ -417,17 +346,17 @@ iptables_restore_main(int argc, char *argv[])
 				parsestart = buffer;
 			}
 
-			add_argv(argv[0]);
-			add_argv("-t");
-			add_argv(curtable);
+			add_argv(argv[0], 0);
+			add_argv("-t", 0);
+			add_argv(curtable, 0);
 
 			if (counters && pcnt && bcnt) {
-				add_argv("--set-counters");
-				add_argv((char *) pcnt);
-				add_argv((char *) bcnt);
+				add_argv("--set-counters", 0);
+				add_argv((char *) pcnt, 0);
+				add_argv((char *) bcnt, 0);
 			}
 
-			add_param_to_argv(parsestart);
+			add_param_to_argv(parsestart, line);
 
 			DEBUGP("calling do_command4(%u, argv, &%s, handle):\n",
 				newargc, curtable);

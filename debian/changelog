@@ -1,10 +1,139 @@
-iptables (1.6.0+snapshot20161117-6) unstable; urgency=medium
+iptables (1.8.2-4) unstable; urgency=medium
 
-  * [3db1c4d] d/patches: add
+  * [5053b60] d/rules: reintroduce V=1
+  * [80bea53] d/patches: add patch cherry picked from upstream (Closes: #922973)
+  * [a9abea9] src:iptables: add salsa CI integration
+
+ -- Arturo Borrero Gonzalez <arturo@debian.org>  Fri, 01 Mar 2019 13:28:35 +0100
+
+iptables (1.8.2-3) unstable; urgency=medium
+
+  * [b58e329] d/control: bump std-version to 4.3.0
+  * [998fa1e] d/control: add pointers to nftables
+  * [4adb176] d/iptables.links: add manpage links
+  * [45c7e9c] d/changelog: cleanup trailing whitespaces
+  * [eda1593] d/: run wrap-and-sort
+
+ -- Arturo Borrero Gonzalez <arturo@debian.org>  Fri, 28 Dec 2018 12:57:19 +0100
+
+iptables (1.8.2-2) unstable; urgency=medium
+
+  * [fb09c23] iptables: fixes for /sbin symlinks (Closes: #913811)
+  * [60b3924] d/t/control: disable tests for ip[6]tables-restore-translate
+  * [8f93912] iptables.prerm: change cleanup order
+
+ -- Arturo Borrero Gonzalez <arturo@debian.org>  Tue, 20 Nov 2018 10:54:37 +0100
+
+iptables (1.8.2-1) unstable; urgency=medium
+
+  * This upstream release closes several bugs:
+    Closes: #913742
+    Closes: #913114
+    Closes: #816087
+    Closes: #913088
+    Closes: #912607
+    Closes: #912610
+  * [0309474] New upstream version 1.8.2
+  * [5d3a638] d/t/control: replace compat names with nft ones
+  * [31d2d6e] d/NEWS: fix typos (Closes: #912981)
+  * [b24cf92] iptables: don't ship paths served by update-alternatives
+    (Closes: #911899)
+  * [f5ec47b] d/patches: cherry-pick format-security_fixes_in_libip[6]t_icmp.patch
+  * [2017f99] d/libxtables12.symbols: add new symbols
+
+ -- Arturo Borrero Gonzalez <arturo@debian.org>  Thu, 15 Nov 2018 12:33:36 +0100
+
+iptables (1.8.1-2) unstable; urgency=medium
+
+  * [5edbd6e] iptables: introduce /sbin compatibility symlinks (Closes: #911777)
+
+ -- Arturo Borrero Gonzalez <arturo@debian.org>  Thu, 25 Oct 2018 13:27:15 +0200
+
+iptables (1.8.1-1) unstable; urgency=medium
+
+  * [85fe398] d/iptables.postinst: fix typo in update-alternative command.
+    Thanks to Pedretti Fabio <pedretti.fabio@gmail.com>
+  * [698f251] d/README.Debian: more compat renames.
+    Thanks to Pedretti Fabio <pedretti.fabio@gmail.com>
+  * [dab1e98] New upstream version 1.8.1
+  * [02ed7af] d/patches: drop 0000-arptables-ebtables-nft.patch
+  * [d7deb51] d/patches: refresh 0401-580941-iptables_apply_update.patch
+  * [1ed5805] d/libxtables12.symbols: add new symbols
+  * [b7d2530] d/README.Debian: refresh paths
+  * [650f9cd] d/iptables.postinst: include new alternatives for {arp,eb}tables
+  * [da869a7] d/: include NEWS file
+
+ -- Arturo Borrero Gonzalez <arturo@debian.org>  Wed, 24 Oct 2018 14:17:46 +0200
+
+iptables (1.8.0-1~exp1) experimental; urgency=medium
+
+  * [5c9fe9f] d/t/control: allow stderr in several tests
+  * [031303e] iptables: introduce alternatives for /sbin/iptables and friends
+  * [e9b2bc3] d/control: adjust package relationship between alternatives
+  * [c958b71] d/README.Debian: refresh file
+  * [cbc1b5a] iptables-nftables-compat: update manpages
+  * [5cda5e1] d/README.source: drop file
+  * [278668f] New upstream version 1.8.0
+  * [8497323] d/patches/: refresh 0301-install_iptables_apply.patch
+  * [f6022b6] d/patches/: refresh 0201-660748-iptables_apply_man.patch
+  * [de3df70] iptables: merge iptables-nftables-compat package
+  * [9e6437c] d/libxtables12.symbols: refresh file
+  * [7f8aa9f] debian/patches/series:0301-install_iptables_apply.patch: typo sbion
+
+ -- Arturo Borrero Gonzalez <arturo@debian.org>  Thu, 27 Sep 2018 13:47:59 +0200
+
+iptables (1.6.2-1.1) unstable; urgency=medium
+
+  * Non-maintainer upload with maintainer approval (#889649).
+  * Cherry-pick [3d13411] by Arturo Borrero Gonzalez to update
+    d/iptables.manpages.  (Closes: #889649)
+
+ -- Niels Thykier <niels@thykier.net>  Tue, 07 Aug 2018 09:43:28 +0000
+
+iptables (1.6.2-1) unstable; urgency=medium
+
+  * [a82b926] d/control: update git URLs
+  * [5beab31] New upstream version 1.6.2
+  * [5f6c1ba] d/patches: drop
+    0001-extensions-libxt_hashlimit-fix-64-bit-printf-formats.patch
+  * [fc56e84] d/: drop 0102-add_manpages.patch and nfnl_osf.8
+  * [8449a67] iptables: bump std-versions to 4.1.3
+  * [7929a02] d/control: remove empty paragraph in iptables-nftables-compat
+    description
+
+ -- Arturo Borrero Gonzalez <arturo@debian.org>  Fri, 02 Feb 2018 19:34:31 +0100
+
+iptables (1.6.1-2) unstable; urgency=medium
+
+  [ Helmut Grohne ]
+  * [e232f6c] d/control: turn iptables-dev Architecture: any (Closes: #865464)
+
+  [ Arturo Borrero Gonzalez ]
+  * [6f63f8c] d/control: make all the -dev packages Multi-Arch: same
+  * [d85cd65] d/control: bump std-version to 4.0.0
+  * [0ba5cff] d/patches: add
     0001-extensions-libxt_hashlimit-fix-64-bit-printf-formats.patch.
     Thanks to James Cowgill for the patch (Closes: #859775)
+  * [ab1785b] iptables: fix ip6tables-apply manpage symlink
 
- -- Arturo Borrero Gonzalez <arturo@debian.org>  Wed, 12 Apr 2017 11:41:06 +0200
+ -- Arturo Borrero Gonzalez <arturo@debian.org>  Thu, 29 Jun 2017 13:40:27 +0200
+
+iptables (1.6.1-1) unstable; urgency=medium
+
+  * Move from experimental to unstable
+  * [445bab4] d/control: maintainer is now the netfilter team
+
+ -- Arturo Borrero Gonzalez <arturo@debian.org>  Mon, 19 Jun 2017 11:56:28 +0200
+
+iptables (1.6.1-1~exp1) experimental; urgency=medium
+
+  * [475b9a9] d/: add basic autopkgtests
+  * [f1f129d] New upstream version 1.6.1
+  * [3464592] d/patches/: refresh 0103-lintian_allows_to.patch
+  * [def0a30] d/patches/: refresh 0104-lintian_hyphens.patch
+  * [3abd57d] d/patches/: refresh 0301-install_iptables_apply.patch
+
+ -- Arturo Borrero Gonzalez <arturo@debian.org>  Wed, 15 Mar 2017 11:03:30 +0100
 
 iptables (1.6.0+snapshot20161117-5) unstable; urgency=medium
 
@@ -166,11 +295,11 @@ iptables (1.4.21-1) unstable; urgency=low
     + Added string match man page hex examples. Closes: #699904
     + Merged 0201-iptables-xml_man_section.patch
     + Merged 0303-extension_cppflags.patch
-    + Merged 0401-state-match-display.patch 
+    + Merged 0401-state-match-display.patch
   * Updated iptables-apply to v1.1. Closes: #580941
   * Use mktemp instead of tmpfile for iptables-apply. Closes: #668582
   * Add iptables-apply info to man pages. Closes: #660748
-  * Updated debian/copyright 
+  * Updated debian/copyright
   * Updated debian/control Description
   * Removed debian/builddir hack and other debian/rules cruft
   * Removed debug info from README.Debian
@@ -192,7 +321,7 @@ iptables (1.4.20-1) unstable; urgency=low
   * New upstream release
   * added 0401-state-match-display.patch for the missing state match
     display reported by Eugene Berdnikov and fixed by Phil Oester. Thanks.
-    Closes: #718810 
+    Closes: #718810
   * upstream fix addresses concurrent invocation issues reported by
     Lamont Jones. Fixed upstream by Phil Oester and Pablo Neira Ayuso.
     Closes: #710997
@@ -235,7 +364,7 @@ iptables (1.4.16.3-4) unstable; urgency=low
 
 iptables (1.4.16.3-3) unstable; urgency=low
 
-  * Added versioned libxtables dependency 
+  * Added versioned libxtables dependency
 
  -- Laurence J. Lane <ljlane@debian.org>  Sun, 28 Oct 2012 09:40:00 -0400
 
@@ -258,14 +387,14 @@ iptables (1.4.16.3-1) unstable; urgency=low
 iptables (1.4.14-3) unstable; urgency=low
 
   * Fixes iptables comment output error reported by Christoph Anton
-    Mitterer. Fixed upstream by Pablo Neira Ayuso. Thanks. 
+    Mitterer. Fixed upstream by Pablo Neira Ayuso. Thanks.
     Closes: #679098
 
  -- Laurence J. Lane <ljlane@debian.org>  Sat, 28 Jul 2012 11:58:38 -0400
 
 iptables (1.4.14-2) unstable; urgency=low
 
-  * Added missing 1.4.13-1.1 NMU fix 
+  * Added missing 1.4.13-1.1 NMU fix
 
  -- Laurence J. Lane <ljlane@debian.org>  Mon, 11 Jun 2012 17:39:35 -0400
 
@@ -291,8 +420,8 @@ iptables (1.4.13-1) unstable; urgency=low
 
 iptables (1.4.12.2-3) unstable; urgency=low
 
-  * Added CPPFLAGS for extensions to enable hardening. Report and 
-    patch by Simon Ruderich. Thanks. Closes: #665286 
+  * Added CPPFLAGS for extensions to enable hardening. Report and
+    patch by Simon Ruderich. Thanks. Closes: #665286
 
  -- Laurence J. Lane <ljlane@debian.org>  Thu, 22 Mar 2012 18:54:37 -0400
 
@@ -303,7 +432,7 @@ iptables (1.4.12.2-2) unstable; urgency=low
 
   * include/linux/types.h refresh adds __aligned_u64. Gleaned from a post
     by Autif Khan. Fixes FTBFS reported by Moritz Muehlenhoff. Thanks.
-    Closes: #664066  
+    Closes: #664066
 
  -- Laurence J. Lane <ljlane@debian.org>  Thu, 15 Mar 2012 14:03:31 -0400
 
@@ -372,7 +501,7 @@ iptables (1.4.9-1) unstable; urgency=low
 
   * New upstream release
   * remove extra iptables-xml.8. Reported by David Prevot. Thanks.
-    Closes: #590619 
+    Closes: #590619
 
  -- Laurence J. Lane <ljlane@debian.org>  Sat, 07 Aug 2010 18:24:17 -0400
 
@@ -423,14 +552,14 @@ iptables (1.4.6-1) unstable; urgency=low
 iptables (1.4.5-1) unstable; urgency=low
 
   * New upstream release
-  * Bumped Standards Version to 3.8.3 
+  * Bumped Standards Version to 3.8.3
   * Moved to source format 3.0 (quilt)
   * s/macthes/matches/ in iptables(8). Reported by Trent W. Buck and
-    fixed upstream. Closes: #539101 
+    fixed upstream. Closes: #539101
   * s/packages/package in iptables-dev descrition. Reported by Pascal
     De Vuyst. Thanks. Closes: #557369
   * Fixed iptables-apply default rule problem reported by StalkR. Fixed
-    upstream. Thanks. Closes: #547734 
+    upstream. Thanks. Closes: #547734
 
  -- Laurence J. Lane <ljlane@debian.org>  Sat, 28 Nov 2009 16:41:04 -0500
 
@@ -445,12 +574,12 @@ iptables (1.4.4-2) unstable; urgency=low
 iptables (1.4.4-1) unstable; urgency=low
 
   * New upstream release
-  * Upstream added Ian Bruce's man page errors fix. Thanks. 
+  * Upstream added Ian Bruce's man page errors fix. Thanks.
     Closes: #531677
   * Upstream added Piotr Lewandowski's iptables(8) typo fix. Thanks.
     Closes: #528457
   * Upstream fixed intraposition vs extraposition deprecation warning.
-    Thanks. Closes: #528736 
+    Thanks. Closes: #528736
   * Added ip6tables-apply symlinks for martin f krafft. Closes: #524862
 
  -- Laurence J. Lane <ljlane@debian.org>  Thu, 18 Jun 2009 08:14:55 -0400
@@ -458,7 +587,7 @@ iptables (1.4.4-1) unstable; urgency=low
 iptables (1.4.3.2-2) unstable; urgency=low
 
   * added iptables dependency to iptables-dev. Reported by Sebastian
-    Harl. Thanks. Closes:# 524766 
+    Harl. Thanks. Closes:# 524766
 
  -- Laurence J. Lane <ljlane@debian.org>  Sun, 19 Apr 2009 14:57:46 -0400
 
@@ -480,7 +609,7 @@ iptables (1.4.3.1-1) unstable; urgency=low
   * Fixed "Unknown arg %s" problem reported by Guillem Cantallops Ramis.
     Fixed upstream. Thanks.  Closes: #469548
   * Fixed iptables-save output problem reported by Ivan Vilata i Balaguer.
-    Fixed upstream. Closes: #514869 
+    Fixed upstream. Closes: #514869
   * Fixed iptables-save quoting problem reported by
     =?UTF-8?B?0YHRgtGA0L7QvdC90Lg=?= Closes: #519584.
     Fixed upstream. Thanks. Closes: #519584
@@ -489,7 +618,7 @@ iptables (1.4.3.1-1) unstable; urgency=low
   * Fixed string match non-null terminator reported by Franck Joncourt.
     Fixed upstream. Thanks. Closes: #513516
   * Added libiptc upstream. Requested by many. Closes: #473533
-  * Fixed tcmpss inversion. Patch by Jan Engelhardt. Thanks. 
+  * Fixed tcmpss inversion. Patch by Jan Engelhardt. Thanks.
 
  -- Laurence J. Lane <ljlane@debian.org>  Fri, 27 Mar 2009 17:02:43 -0400
 
@@ -503,7 +632,7 @@ iptables (1.4.2-6) unstable; urgency=high
 iptables (1.4.2-5) unstable; urgency=low
 
   * fixed libxt_multiport man page typo. Reported and patched by
-    Marc Fournier. Thanks. Closes: #511891 
+    Marc Fournier. Thanks. Closes: #511891
   * fixed iptables-restore.8 formatting. Reported and patched by
     shaulkarl. Thanks. Closes: #512281
   * fixed libxt_owner spacing. Reported by Dr. Markus Waldeck. Patched
@@ -524,16 +653,16 @@ iptables (1.4.2-3) unstable; urgency=low
   * added debian/builddir.mk support
   * corrected 1.4.2-1 changelog entry: 's@moved iptables@&-xml@'.
     Reported by jidanni. Thanks.
-  * lintian override left out of 1.4.2-2 
+  * lintian override left out of 1.4.2-2
 
  -- Laurence J. Lane <ljlane@debian.org>  Fri, 09 Jan 2009 15:36:33 -0500
 
 iptables (1.4.2-2) unstable; urgency=low
 
   * lintian cleanups:
-    - moved libxtables.so to iptables-dev package 
+    - moved libxtables.so to iptables-dev package
     - added override for libxtables
-    - added ${misc:Depends} for debhelper 
+    - added ${misc:Depends} for debhelper
     - changelog utf8 conversion
 
  -- Laurence J. Lane <ljlane@debian.org>  Sat, 03 Jan 2009 22:20:58 -0500
@@ -543,11 +672,11 @@ iptables (1.4.2-1) unstable; urgency=low
   * New upstream release. Reported by Torsten Werner. Thanks.
     closes: #503229
   * moved iptables-xml from /usr/sbin to /usr/bin. Reported by Alexey
-    Feldgendler. Thanks. closes: #509386  
+    Feldgendler. Thanks. closes: #509386
   * -multi bins were included in buildd generated packages. Reported
     by Alexey Feldgendler. closes: 509385
   * added missing iptables.xslt. Reported by Carl FÃÂ¼rstenberg. Thanks.
-    closes: #501615. 
+    closes: #501615.
 
  -- Laurence J. Lane <ljlane@debian.org>  Fri, 02 Jan 2009 17:19:08 -0500
 
