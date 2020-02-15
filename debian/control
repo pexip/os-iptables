@@ -19,7 +19,7 @@ Standards-Version: 3.9.8
 Homepage: http://www.netfilter.org/
 Vcs-Git: https://anonscm.debian.org/git/pkg-netfilter/pkg-iptables.git
 Vcs-Browser: https://anonscm.debian.org/git/pkg-netfilter/pkg-iptables.git
-XS-Pexip-Upstream: http://ftp.debian.org/debian/ stretch
+XS-Pexip-Upstream: http://ftp.debian.org/debian/ buster
 
 Package: iptables
 Multi-Arch: foreign
