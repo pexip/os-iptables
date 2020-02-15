@@ -6,8 +6,15 @@
 #include <stdint.h>
 #include <netinet/in.h>
 #include <net/if.h>
+#include <linux/netfilter_arp/arp_tables.h>
 #include <linux/netfilter_ipv4/ip_tables.h>
 #include <linux/netfilter_ipv6/ip6_tables.h>
+
+#ifdef DEBUG
+#define DEBUGP(x, args...) fprintf(stdout, x, ## args)
+#else
+#define DEBUGP(x, args...)
+#endif
 
 enum {
 	OPT_NONE        = 0,
@@ -48,15 +55,48 @@ struct xtables_afinfo {
 	int so_rev_target;
 };
 
+/* trick for ebtables-compat, since watchers are targets */
+struct ebt_match {
+	struct ebt_match			*next;
+	union {
+		struct xtables_match		*match;
+		struct xtables_target		*watcher;
+	} u;
+	bool					ismatch;
+};
+
+/* Fake ebt_entry */
+struct ebt_entry {
+	/* this needs to be the first field */
+	unsigned int bitmask;
+	unsigned int invflags;
+	uint16_t ethproto;
+	/* the physical in-dev */
+	char in[IFNAMSIZ];
+	/* the logical in-dev */
+	char logical_in[IFNAMSIZ];
+	/* the physical out-dev */
+	char out[IFNAMSIZ];
+	/* the logical out-dev */
+	char logical_out[IFNAMSIZ];
+	unsigned char sourcemac[6];
+	unsigned char sourcemsk[6];
+	unsigned char destmac[6];
+	unsigned char destmsk[6];
+};
+
 struct iptables_command_state {
 	union {
+		struct ebt_entry eb;
 		struct ipt_entry fw;
 		struct ip6t_entry fw6;
+		struct arpt_entry arp;
 	};
 	int invert;
 	int c;
 	unsigned int options;
 	struct xtables_rule_match *matches;
+	struct ebt_match *match_list;
 	struct xtables_target *target;
 	struct xt_counters counters;
 	char *protocol;
@@ -86,10 +126,56 @@ extern struct xtables_match *load_proto(struct iptables_command_state *);
 extern int subcmd_main(int, char **, const struct subcommand *);
 extern void xs_init_target(struct xtables_target *);
 extern void xs_init_match(struct xtables_match *);
-bool xtables_lock(int wait, struct timeval *wait_interval);
 
-void parse_wait_interval(const char *str, struct timeval *wait_interval);
+/**
+ * Values for the iptables lock.
+ *
+ * A value >= 0 indicates the lock filedescriptor. Other values are:
+ *
+ * XT_LOCK_FAILED : The lock could not be acquired.
+ *
+ * XT_LOCK_BUSY : The lock was held by another process. xtables_lock only
+ * returns this value when |wait| == false. If |wait| == true, xtables_lock
+ * will not return unless the lock has been acquired.
+ *
+ * XT_LOCK_NOT_ACQUIRED : We have not yet attempted to acquire the lock.
+ */
+enum {
+	XT_LOCK_BUSY = -1,
+	XT_LOCK_FAILED = -2,
+	XT_LOCK_NOT_ACQUIRED  = -3,
+};
+extern void xtables_unlock(int lock);
+extern int xtables_lock_or_exit(int wait, struct timeval *tv);
+
+int parse_wait_time(int argc, char *argv[]);
+void parse_wait_interval(int argc, char *argv[], struct timeval *wait_interval);
+int parse_counters(const char *string, struct xt_counters *ctr);
+bool xs_has_arg(int argc, char *argv[]);
 
 extern const struct xtables_afinfo *afinfo;
+
+extern char *newargv[];
+extern int newargc;
+
+extern char *oldargv[];
+extern int oldargc;
+
+extern int newargvattr[];
+
+int add_argv(const char *what, int quoted);
+void free_argv(void);
+void save_argv(void);
+void add_param_to_argv(char *parsestart, int line);
+
+void print_ipv4_addresses(const struct ipt_entry *fw, unsigned int format);
+void print_ipv6_addresses(const struct ip6t_entry *fw6, unsigned int format);
+
+void print_ifaces(const char *iniface, const char *outiface, uint8_t invflags,
+		  unsigned int format);
+
+void command_match(struct iptables_command_state *cs);
+const char *xt_parse_target(const char *targetname);
+void command_jump(struct iptables_command_state *cs);
 
 #endif /* IPTABLES_XSHARED_H */

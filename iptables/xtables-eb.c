@@ -37,7 +37,6 @@
 
 #include <linux/netfilter_bridge.h>
 #include <linux/netfilter/nf_tables.h>
-#include <ebtables/ethernetdb.h>
 #include <libiptc/libxtc.h>
 #include "xshared.h"
 #include "nft.h"
@@ -46,9 +45,6 @@
 /*
  * From include/ebtables_u.h
  */
-#define EXEC_STYLE_PRG    0
-#define EXEC_STYLE_DAEMON 1
-
 #define ebt_check_option2(flags, mask) EBT_CHECK_OPTION(flags, mask)
 
 /*
@@ -168,7 +164,7 @@ static int
 append_entry(struct nft_handle *h,
 	     const char *chain,
 	     const char *table,
-	     struct ebtables_command_state *cs,
+	     struct iptables_command_state *cs,
 	     int rule_nr,
 	     bool verbose, bool append)
 {
@@ -186,7 +182,7 @@ static int
 delete_entry(struct nft_handle *h,
 	     const char *chain,
 	     const char *table,
-	     struct ebtables_command_state *cs,
+	     struct iptables_command_state *cs,
 	     int rule_nr,
 	     int rule_nr_end,
 	     bool verbose)
@@ -206,8 +202,11 @@ delete_entry(struct nft_handle *h,
 	return ret;
 }
 
-static int get_current_chain(const char *chain)
+int ebt_get_current_chain(const char *chain)
 {
+	if (!chain)
+		return -1;
+
 	if (strcmp(chain, "PREROUTING") == 0)
 		return NF_BR_PRE_ROUTING;
 	else if (strcmp(chain, "INPUT") == 0)
@@ -247,7 +246,7 @@ static int get_current_chain(const char *chain)
 
 /* Default command line options. Do not mess around with the already
  * assigned numbers unless you know what you are doing */
-static struct option ebt_original_options[] =
+struct option ebt_original_options[] =
 {
 	{ "append"         , required_argument, 0, 'A' },
 	{ "insert"         , required_argument, 0, 'I' },
@@ -380,32 +379,22 @@ static struct option *merge_options(struct option *oldopts,
 /*
  * More glue code.
  */
-static struct xtables_target *command_jump(struct ebtables_command_state *cs,
-					   const char *jumpto)
+struct xtables_target *ebt_command_jump(const char *jumpto)
 {
 	struct xtables_target *target;
-	size_t size;
+	unsigned int verdict;
 
-	/* XTF_TRY_LOAD (may be chain name) */
-	target = xtables_find_target(jumpto, XTF_TRY_LOAD);
+	/* Standard target? */
+	if (!ebt_fill_target(jumpto, &verdict))
+		jumpto = "standard";
 
-	if (!target)
-		return NULL;
-
-	size = XT_ALIGN(sizeof(struct xt_entry_target))
-		+ target->size;
-
-	target->t = xtables_calloc(1, size);
-	target->t->u.target_size = size;
-	strncpy(target->t->u.user.name, jumpto, sizeof(target->t->u.user.name));
-	target->t->u.user.name[sizeof(target->t->u.user.name)-1] = '\0';
-	target->t->u.user.revision = target->revision;
-
-	xs_init_target(target);
-
-	opts = merge_options(opts, target->extra_opts, &target->option_offset);
-	if (opts == NULL)
-		xtables_error(OTHER_PROBLEM, "Can't alloc memory");
+	/* For ebtables, all targets are preloaded. Hence it is either in
+	 * xtables_targets or a custom chain to jump to, in which case
+	 * returning NULL is fine. */
+	for (target = xtables_targets; target; target = target->next) {
+		if (!strcmp(target->name, jumpto))
+			break;
+	}
 
 	return target;
 }
@@ -524,13 +513,12 @@ static int parse_rule_range(const char *argv, int *rule_nr, int *rule_nr_end)
 /* Incrementing or decrementing rules in daemon mode is not supported as the
  * involved code overload is not worth it (too annoying to take the increased
  * counters in the kernel into account). */
-static int parse_change_counters_rule(int argc, char **argv, int *rule_nr, int *rule_nr_end, int exec_style, struct ebtables_command_state *cs)
+static int parse_change_counters_rule(int argc, char **argv, int *rule_nr, int *rule_nr_end, struct iptables_command_state *cs)
 {
 	char *buffer;
 	int ret = 0;
 
-	if (optind + 1 >= argc || (argv[optind][0] == '-' && (argv[optind][1] < '0' || argv[optind][1] > '9')) ||
-	    (argv[optind + 1][0] == '-' && (argv[optind + 1][1] < '0'  && argv[optind + 1][1] > '9')))
+	if (optind + 1 >= argc || argv[optind][0] == '-' || argv[optind + 1][0] == '-')
 		xtables_error(PARAMETER_PROBLEM,
 			      "The command -C needs at least 2 arguments");
 	if (optind + 2 < argc && (argv[optind + 2][0] != '-' || (argv[optind + 2][1] >= '0' && argv[optind + 2][1] <= '9'))) {
@@ -544,17 +532,9 @@ static int parse_change_counters_rule(int argc, char **argv, int *rule_nr, int *
 	}
 
 	if (argv[optind][0] == '+') {
-		if (exec_style == EXEC_STYLE_DAEMON)
-daemon_incr:
-			xtables_error(PARAMETER_PROBLEM,
-				      "Incrementing rule counters (%s) not allowed in daemon mode", argv[optind]);
 		ret += 1;
 		cs->counters.pcnt = strtoull(argv[optind] + 1, &buffer, 10);
 	} else if (argv[optind][0] == '-') {
-		if (exec_style == EXEC_STYLE_DAEMON)
-daemon_decr:
-			xtables_error(PARAMETER_PROBLEM,
-				      "Decrementing rule counters (%s) not allowed in daemon mode", argv[optind]);
 		ret += 2;
 		cs->counters.pcnt = strtoull(argv[optind] + 1, &buffer, 10);
 	} else
@@ -564,13 +544,9 @@ daemon_decr:
 		goto invalid;
 	optind++;
 	if (argv[optind][0] == '+') {
-		if (exec_style == EXEC_STYLE_DAEMON)
-			goto daemon_incr;
 		ret += 3;
 		cs->counters.bcnt = strtoull(argv[optind] + 1, &buffer, 10);
 	} else if (argv[optind][0] == '-') {
-		if (exec_style == EXEC_STYLE_DAEMON)
-			goto daemon_decr;
 		ret += 6;
 		cs->counters.bcnt = strtoull(argv[optind] + 1, &buffer, 10);
 	} else
@@ -584,19 +560,18 @@ invalid:
 	xtables_error(PARAMETER_PROBLEM,"Packet counter '%s' invalid", argv[optind]);
 }
 
-static int parse_iface(char *iface, char *option)
+static void ebtables_parse_interface(const char *arg, char *vianame)
 {
+	unsigned char mask[IFNAMSIZ];
 	char *c;
 
-	if ((c = strchr(iface, '+'))) {
-		if (*(c + 1) != '\0') {
+	xtables_parse_interface(arg, vianame, mask);
+
+	if ((c = strchr(vianame, '+'))) {
+		if (*(c + 1) != '\0')
 			xtables_error(PARAMETER_PROBLEM,
-				      "Spurious characters after '+' wildcard for '%s'", option);
-			return -1;
-		} else
-			*c = IF_WILDCARD;
+				      "Spurious characters after '+' wildcard");
 	}
-	return 0;
 }
 
 /* This code is very similar to iptables/xtables.c:command_match() */
@@ -605,9 +580,11 @@ static void ebt_load_match(const char *name)
 	struct xtables_match *m;
 	size_t size;
 
-	m = xtables_find_match(name, XTF_LOAD_MUST_SUCCEED, NULL);
-	if (m == NULL)
-		xtables_error(OTHER_PROBLEM, "Unable to load %s match", name);
+	m = xtables_find_match(name, XTF_TRY_LOAD, NULL);
+	if (m == NULL) {
+		fprintf(stderr, "Unable to load %s match\n", name);
+		return;
+	}
 
 	size = XT_ALIGN(sizeof(struct xt_entry_match)) + m->size;
 	m->m = xtables_calloc(1, size);
@@ -621,22 +598,23 @@ static void ebt_load_match(const char *name)
 		xtables_error(OTHER_PROBLEM, "Can't alloc memory");
 }
 
-static void ebt_load_watcher(const char *name)
+static void __ebt_load_watcher(const char *name, const char *typename)
 {
 	struct xtables_target *watcher;
 	size_t size;
 
-	watcher = xtables_find_target(name, XTF_LOAD_MUST_SUCCEED);
-	if (!watcher)
-		xtables_error(OTHER_PROBLEM,
-			      "Unable to load %s watcher", name);
+	watcher = xtables_find_target(name, XTF_TRY_LOAD);
+	if (!watcher) {
+		fprintf(stderr, "Unable to load %s %s\n", name, typename);
+		return;
+	}
 
 	size = XT_ALIGN(sizeof(struct xt_entry_target)) + watcher->size;
 
 	watcher->t = xtables_calloc(1, size);
 	watcher->t->u.target_size = size;
-	strncpy(watcher->t->u.user.name, name,
-		sizeof(watcher->t->u.user.name));
+	snprintf(watcher->t->u.user.name,
+		sizeof(watcher->t->u.user.name), "%s", name);
 	watcher->t->u.user.name[sizeof(watcher->t->u.user.name)-1] = '\0';
 	watcher->t->u.user.revision = watcher->revision;
 
@@ -648,39 +626,61 @@ static void ebt_load_watcher(const char *name)
 		xtables_error(OTHER_PROBLEM, "Can't alloc memory");
 }
 
-static void ebt_load_match_extensions(void)
+static void ebt_load_watcher(const char *name)
+{
+	return __ebt_load_watcher(name, "watcher");
+}
+
+static void ebt_load_target(const char *name)
+{
+	return __ebt_load_watcher(name, "target");
+}
+
+void ebt_load_match_extensions(void)
 {
 	opts = ebt_original_options;
 	ebt_load_match("802_3");
+	ebt_load_match("arp");
 	ebt_load_match("ip");
+	ebt_load_match("ip6");
 	ebt_load_match("mark_m");
 	ebt_load_match("limit");
+	ebt_load_match("pkttype");
+	ebt_load_match("vlan");
+	ebt_load_match("stp");
 
 	ebt_load_watcher("log");
 	ebt_load_watcher("nflog");
+
+	ebt_load_target("mark");
+	ebt_load_target("dnat");
+	ebt_load_target("snat");
+	ebt_load_target("arpreply");
+	ebt_load_target("redirect");
+	ebt_load_target("standard");
 }
 
-static void ebt_add_match(struct xtables_match *m,
-			  struct ebtables_command_state *cs)
+void ebt_add_match(struct xtables_match *m,
+		   struct iptables_command_state *cs)
 {
-	struct xtables_rule_match *i, **rule_matches = &cs->matches;
+	struct xtables_rule_match **rule_matches = &cs->matches;
 	struct xtables_match *newm;
-	struct ebt_match *newnode;
-
-	/* match already in rule_matches, skip inclusion */
-	for (i = *rule_matches; i; i = i->next) {
-		if (strcmp(m->name, i->match->name) == 0) {
-			i->match->mflags |= m->mflags;
-			return;
-		}
-	}
+	struct ebt_match *newnode, **matchp;
+	struct xt_entry_match *m2;
 
 	newm = xtables_find_match(m->name, XTF_LOAD_MUST_SUCCEED, rule_matches);
 	if (newm == NULL)
 		xtables_error(OTHER_PROBLEM,
 			      "Unable to add match %s", m->name);
 
+	m2 = xtables_calloc(1, newm->m->u.match_size);
+	memcpy(m2, newm->m, newm->m->u.match_size);
+	memset(newm->m->data, 0, newm->size);
+	xs_init_match(newm);
+	newm->m = m2;
+
 	newm->mflags = m->mflags;
+	m->mflags = 0;
 
 	/* glue code for watchers */
 	newnode = calloc(1, sizeof(struct ebt_match));
@@ -690,88 +690,153 @@ static void ebt_add_match(struct xtables_match *m,
 	newnode->ismatch = true;
 	newnode->u.match = newm;
 
-	if (cs->match_list == NULL)
-		cs->match_list = newnode;
-	else
-		cs->match_list->next = newnode;
+	for (matchp = &cs->match_list; *matchp; matchp = &(*matchp)->next)
+		;
+	*matchp = newnode;
 }
 
-static void ebt_add_watcher(struct xtables_target *watcher,
-			    struct ebtables_command_state *cs)
+void ebt_add_watcher(struct xtables_target *watcher,
+		     struct iptables_command_state *cs)
 {
-	struct ebt_match *i, *newnode;
+	struct ebt_match *newnode, **matchp;
+	struct xtables_target *clone;
 
-	for (i = cs->match_list; i; i = i->next) {
-		if (i->ismatch)
-			continue;
-		if (strcmp(i->u.watcher->name, watcher->name) == 0) {
-			i->u.watcher->tflags |= watcher->tflags;
-			return;
-		}
-	}
+	clone = xtables_malloc(sizeof(struct xtables_target));
+	memcpy(clone, watcher, sizeof(struct xtables_target));
+	clone->udata = NULL;
+	clone->tflags = watcher->tflags;
+	clone->next = clone;
+
+	clone->t = xtables_calloc(1, watcher->t->u.target_size);
+	memcpy(clone->t, watcher->t, watcher->t->u.target_size);
+
+	memset(watcher->t->data, 0, watcher->size);
+	xs_init_target(watcher);
+	watcher->tflags = 0;
+
 
 	newnode = calloc(1, sizeof(struct ebt_match));
 	if (newnode == NULL)
 		xtables_error(OTHER_PROBLEM, "Unable to alloc memory");
 
-	newnode->u.watcher = watcher;
+	newnode->u.watcher = clone;
 
-	if (cs->match_list == NULL)
-		cs->match_list = newnode;
-	else
-		cs->match_list->next = newnode;
+	for (matchp = &cs->match_list; *matchp; matchp = &(*matchp)->next)
+		;
+	*matchp = newnode;
 }
 
-/* We use exec_style instead of #ifdef's because ebtables.so is a shared object. */
-int do_commandeb(struct nft_handle *h, int argc, char *argv[], char **table)
+int ebt_command_default(struct iptables_command_state *cs)
+{
+	struct xtables_target *t = cs->target;
+	struct xtables_match *m;
+	struct ebt_match *matchp;
+
+	/* Is it a target option? */
+	if (t && t->parse) {
+		if (t->parse(cs->c - t->option_offset, cs->argv,
+			     ebt_invert, &t->tflags, NULL, &t->t))
+			return 0;
+	}
+
+	/* check previously added matches/watchers to this rule first */
+	for (matchp = cs->match_list; matchp; matchp = matchp->next) {
+		if (matchp->ismatch) {
+			m = matchp->u.match;
+			if (m->parse &&
+			    m->parse(cs->c - m->option_offset, cs->argv,
+				     ebt_invert, &m->mflags, NULL, &m->m))
+				return 0;
+		} else {
+			t = matchp->u.watcher;
+			if (t->parse &&
+			    t->parse(cs->c - t->option_offset, cs->argv,
+				     ebt_invert, &t->tflags, NULL, &t->t))
+				return 0;
+		}
+	}
+
+	/* Is it a match_option? */
+	for (m = xtables_matches; m; m = m->next) {
+		if (m->parse &&
+		    m->parse(cs->c - m->option_offset, cs->argv,
+			     ebt_invert, &m->mflags, NULL, &m->m)) {
+			ebt_add_match(m, cs);
+			return 0;
+		}
+	}
+
+	/* Is it a watcher option? */
+	for (t = xtables_targets; t; t = t->next) {
+		if (t->parse &&
+		    t->parse(cs->c - t->option_offset, cs->argv,
+			     ebt_invert, &t->tflags, NULL, &t->t)) {
+			ebt_add_watcher(t, cs);
+			return 0;
+		}
+	}
+	return 1;
+}
+
+int nft_init_eb(struct nft_handle *h, const char *pname)
+{
+	ebtables_globals.program_name = pname;
+	if (xtables_init_all(&ebtables_globals, NFPROTO_BRIDGE) < 0) {
+		fprintf(stderr, "%s/%s Failed to initialize ebtables-compat\n",
+			ebtables_globals.program_name,
+			ebtables_globals.program_version);
+		exit(1);
+	}
+
+#if defined(ALL_INCLUSIVE) || defined(NO_SHARED_LIBS)
+	init_extensionsb();
+#endif
+
+	memset(h, 0, sizeof(*h));
+
+	h->family = NFPROTO_BRIDGE;
+
+	if (nft_init(h, xtables_bridge) < 0)
+		xtables_error(OTHER_PROBLEM,
+			      "Could not initialize nftables layer.");
+	h->ops = nft_family_ops_lookup(h->family);
+	if (!h->ops)
+		xtables_error(PARAMETER_PROBLEM, "Unknown family");
+
+	/* manually registering ebt matches, given the original ebtables parser
+	 * don't use '-m matchname' and the match can't be loaded dynamically when
+	 * the user calls it.
+	 */
+	ebt_load_match_extensions();
+
+	return 0;
+}
+
+int do_commandeb(struct nft_handle *h, int argc, char *argv[], char **table,
+		 bool restore)
 {
 	char *buffer;
 	int c, i;
-	int zerochain = -1; /* Needed for the -Z option (we can have -Z <this> -L <that>) */
 	int chcounter = 0; /* Needed for -C */
 	int rule_nr = 0;
 	int rule_nr_end = 0;
 	int ret = 0;
 	unsigned int flags = 0;
-	struct xtables_target *t, *w;
-	struct xtables_match *m;
-	struct ebtables_command_state cs;
+	struct xtables_target *t;
+	struct iptables_command_state cs = {
+		.argv = argv,
+		.jumpto	= "",
+		.eb.bitmask = EBT_NOPROTO,
+	};
 	char command = 'h';
 	const char *chain = NULL;
 	const char *policy = NULL;
-	int exec_style = EXEC_STYLE_PRG;
 	int selected_chain = -1;
 	struct xtables_rule_match *xtrm_i;
 	struct ebt_match *match;
 
-	memset(&cs, 0, sizeof(cs));
-	cs.argv = argv;
-
-	if (nft_init(h, xtables_bridge) < 0)
-		xtables_error(OTHER_PROBLEM,
-			      "Could not initialize nftables layer.");
-
-	h->ops = nft_family_ops_lookup(h->family);
-	if (h->ops == NULL)
-		xtables_error(PARAMETER_PROBLEM, "Unknown family");
-
-	/* manually registering ebt matches, given the original ebtables parser
-	 * don't use '-m matchname' and the match can't loaded dinamically when
-	 * the user calls it.
-	 */
-	ebt_load_match_extensions();
-
-	/* clear mflags in case do_commandeb gets called a second time
-	 * (we clear the global list of all matches for security)*/
-	for (m = xtables_matches; m; m = m->next)
-		m->mflags = 0;
-
-	for (t = xtables_targets; t; t = t->next) {
-		t->tflags = 0;
-		t->used = 0;
-	}
-
 	/* prevent getopt to spoil our error reporting */
+	optind = 0;
 	opterr = false;
 
 	/* Getopt saves the day */
@@ -801,18 +866,22 @@ int do_commandeb(struct nft_handle *h, int argc, char *argv[], char **table)
 					      "Multiple commands are not allowed");
 
 			command = c;
+			if (optarg && (optarg[0] == '-' || !strcmp(optarg, "!")))
+				xtables_error(PARAMETER_PROBLEM, "No chain name specified");
 			chain = optarg;
-			selected_chain = get_current_chain(chain);
+			selected_chain = ebt_get_current_chain(chain);
 			flags |= OPT_COMMAND;
-			/*if (!(replace->flags & OPT_KERNELDATA))
-				ebt_get_kernel_table(replace, 0);*/
-			/*if (optarg && (optarg[0] == '-' || !strcmp(optarg, "!")))
-				ebt_print_error2("No chain name specified");*/
+
 			if (c == 'N') {
 				ret = nft_chain_user_add(h, chain, *table);
 				break;
 			} else if (c == 'X') {
-				ret = nft_chain_user_del(h, chain, *table);
+				/* X arg is optional, optarg is NULL */
+				if (!chain && optind < argc && argv[optind][0] != '-') {
+					chain = argv[optind];
+					optind++;
+				}
+				ret = nft_chain_user_del(h, chain, *table, 0);
 				break;
 			}
 
@@ -842,7 +911,7 @@ int do_commandeb(struct nft_handle *h, int argc, char *argv[], char **table)
 							 "Problem with the specified rule number(s) '%s'", argv[optind]);
 				optind++;
 			} else if (c == 'C') {
-				if ((chcounter = parse_change_counters_rule(argc, argv, &rule_nr, &rule_nr_end, exec_style, &cs)) == -1)
+				if ((chcounter = parse_change_counters_rule(argc, argv, &rule_nr, &rule_nr_end, &cs)) == -1)
 					return -1;
 			} else if (c == 'I') {
 				if (optind >= argc || (argv[optind][0] == '-' && (argv[optind][1] < '0' || argv[optind][1] > '9')))
@@ -890,43 +959,18 @@ print_zero:
 					goto print_zero;
 			}
 
-#ifdef SILENT_DAEMON
-			if (c== 'L' && exec_style == EXEC_STYLE_DAEMON)
-				xtables_error(PARAMETER_PROBLEM,
-					      "-L not supported in daemon mode");
-#endif
-
-			/*if (!(replace->flags & OPT_KERNELDATA))
-				ebt_get_kernel_table(replace, 0);
-			i = -1;
 			if (optind < argc && argv[optind][0] != '-') {
-				if ((i = ebt_get_chainnr(replace, argv[optind])) == -1)
-					ebt_print_error2("Chain '%s' doesn't exist", argv[optind]);
+				chain = argv[optind];
 				optind++;
 			}
-			if (i != -1) {
-				if (c == 'Z')
-					zerochain = i;
-				else
-					replace->selected_chain = i;
-			}*/
 			break;
 		case 'V': /* Version */
 			if (OPT_COMMANDS)
 				xtables_error(PARAMETER_PROBLEM,
 					      "Multiple commands are not allowed");
-			command = 'V';
-			if (exec_style == EXEC_STYLE_DAEMON)
-				xtables_error(PARAMETER_PROBLEM,
-					      "%s %s\n", prog_name, prog_vers);
-			printf("%s %s\n", prog_name, prog_vers);
+			printf("%s %s (nf_tables)\n", prog_name, prog_vers);
 			exit(0);
 		case 'h': /* Help */
-#ifdef SILENT_DAEMON
-			if (exec_style == EXEC_STYLE_DAEMON)
-				xtables_error(PARAMETER_PROBLEM,
-					      "-h not supported in daemon mode");
-#endif
 			if (OPT_COMMANDS)
 				xtables_error(PARAMETER_PROBLEM,
 					      "Multiple commands are not allowed");
@@ -957,9 +1001,6 @@ print_zero:
 			}
 			break;
 		case 't': /* Table */
-			if (OPT_COMMANDS)
-				xtables_error(PARAMETER_PROBLEM,
-					      "Please put the -t option first");
 			ebt_check_option2(&flags, OPT_TABLE);
 			if (strlen(optarg) > EBT_TABLE_MAXNAMELEN - 1)
 				xtables_error(PARAMETER_PROBLEM,
@@ -988,14 +1029,9 @@ print_zero:
 					xtables_error(PARAMETER_PROBLEM,
 						      "Use -i only in INPUT, FORWARD, PREROUTING and BROUTING chains");
 				if (ebt_check_inverse2(optarg, argc, argv))
-					cs.fw.invflags |= EBT_IIN;
+					cs.eb.invflags |= EBT_IIN;
 
-				if (strlen(optarg) >= IFNAMSIZ)
-big_iface_length:
-					xtables_error(PARAMETER_PROBLEM,
-						      "Interface name length cannot exceed %d characters",
-						      IFNAMSIZ - 1);
-				xtables_parse_interface(optarg, cs.fw.in, cs.fw.in_mask);
+				ebtables_parse_interface(optarg, cs.eb.in);
 				break;
 			} else if (c == 2) {
 				ebt_check_option2(&flags, OPT_LOGICALIN);
@@ -1003,13 +1039,9 @@ big_iface_length:
 					xtables_error(PARAMETER_PROBLEM,
 						      "Use --logical-in only in INPUT, FORWARD, PREROUTING and BROUTING chains");
 				if (ebt_check_inverse2(optarg, argc, argv))
-					cs.fw.invflags |= EBT_ILOGICALIN;
+					cs.eb.invflags |= EBT_ILOGICALIN;
 
-				if (strlen(optarg) >= IFNAMSIZ)
-					goto big_iface_length;
-				strcpy(cs.fw.logical_in, optarg);
-				if (parse_iface(cs.fw.logical_in, "--logical-in"))
-					return -1;
+				ebtables_parse_interface(optarg, cs.eb.logical_in);
 				break;
 			} else if (c == 'o') {
 				ebt_check_option2(&flags, OPT_OUT);
@@ -1017,12 +1049,9 @@ big_iface_length:
 					xtables_error(PARAMETER_PROBLEM,
 						      "Use -o only in OUTPUT, FORWARD and POSTROUTING chains");
 				if (ebt_check_inverse2(optarg, argc, argv))
-					cs.fw.invflags |= EBT_IOUT;
+					cs.eb.invflags |= EBT_IOUT;
 
-				if (strlen(optarg) >= IFNAMSIZ)
-					goto big_iface_length;
-
-				xtables_parse_interface(optarg, cs.fw.out, cs.fw.out_mask);
+				ebtables_parse_interface(optarg, cs.eb.out);
 				break;
 			} else if (c == 3) {
 				ebt_check_option2(&flags, OPT_LOGICALOUT);
@@ -1030,36 +1059,34 @@ big_iface_length:
 					xtables_error(PARAMETER_PROBLEM,
 						      "Use --logical-out only in OUTPUT, FORWARD and POSTROUTING chains");
 				if (ebt_check_inverse2(optarg, argc, argv))
-					cs.fw.invflags |= EBT_ILOGICALOUT;
+					cs.eb.invflags |= EBT_ILOGICALOUT;
 
-				if (strlen(optarg) >= IFNAMSIZ)
-					goto big_iface_length;
-				strcpy(cs.fw.logical_out, optarg);
-				if (parse_iface(cs.fw.logical_out, "--logical-out"))
-					return -1;
+				ebtables_parse_interface(optarg, cs.eb.logical_out);
 				break;
 			} else if (c == 'j') {
 				ebt_check_option2(&flags, OPT_JUMP);
-				cs.jumpto = parse_target(optarg);
-				cs.target = command_jump(&cs, cs.jumpto);
+				if (strcmp(optarg, "CONTINUE") != 0) {
+					cs.jumpto = parse_target(optarg);
+					cs.target = ebt_command_jump(cs.jumpto);
+				}
 				break;
 			} else if (c == 's') {
 				ebt_check_option2(&flags, OPT_SOURCE);
 				if (ebt_check_inverse2(optarg, argc, argv))
-					cs.fw.invflags |= EBT_ISOURCE;
+					cs.eb.invflags |= EBT_ISOURCE;
 
-				if (ebt_get_mac_and_mask(optarg, cs.fw.sourcemac, cs.fw.sourcemsk))
+				if (ebt_get_mac_and_mask(optarg, cs.eb.sourcemac, cs.eb.sourcemsk))
 					xtables_error(PARAMETER_PROBLEM, "Problem with specified source mac '%s'", optarg);
-				cs.fw.bitmask |= EBT_SOURCEMAC;
+				cs.eb.bitmask |= EBT_SOURCEMAC;
 				break;
 			} else if (c == 'd') {
 				ebt_check_option2(&flags, OPT_DEST);
 				if (ebt_check_inverse2(optarg, argc, argv))
-					cs.fw.invflags |= EBT_IDEST;
+					cs.eb.invflags |= EBT_IDEST;
 
-				if (ebt_get_mac_and_mask(optarg, cs.fw.destmac, cs.fw.destmsk))
+				if (ebt_get_mac_and_mask(optarg, cs.eb.destmac, cs.eb.destmsk))
 					xtables_error(PARAMETER_PROBLEM, "Problem with specified destination mac '%s'", optarg);
-				cs.fw.bitmask |= EBT_DESTMAC;
+				cs.eb.bitmask |= EBT_DESTMAC;
 				break;
 			} else if (c == 'c') {
 				ebt_check_option2(&flags, OPT_COUNT);
@@ -1085,38 +1112,33 @@ big_iface_length:
 			}
 			ebt_check_option2(&flags, OPT_PROTOCOL);
 			if (ebt_check_inverse2(optarg, argc, argv))
-				cs.fw.invflags |= EBT_IPROTO;
+				cs.eb.invflags |= EBT_IPROTO;
 
-			cs.fw.bitmask &= ~((unsigned int)EBT_NOPROTO);
+			cs.eb.bitmask &= ~((unsigned int)EBT_NOPROTO);
 			i = strtol(optarg, &buffer, 16);
 			if (*buffer == '\0' && (i < 0 || i > 0xFFFF))
 				xtables_error(PARAMETER_PROBLEM,
 					      "Problem with the specified protocol");
 			if (*buffer != '\0') {
-				struct ethertypeent *ent;
+				struct xt_ethertypeent *ent;
 
 				if (!strcasecmp(optarg, "LENGTH")) {
-					cs.fw.bitmask |= EBT_802_3;
+					cs.eb.bitmask |= EBT_802_3;
 					break;
 				}
-				ent = getethertypebyname(optarg);
+				ent = xtables_getethertypebyname(optarg);
 				if (!ent)
 					xtables_error(PARAMETER_PROBLEM,
-						      "Problem with the specified Ethernet protocol '%s', perhaps "_PATH_ETHERTYPES " is missing", optarg);
-				cs.fw.ethproto = ent->e_ethertype;
+						      "Problem with the specified Ethernet protocol '%s', perhaps "XT_PATH_ETHERTYPES " is missing", optarg);
+				cs.eb.ethproto = ent->e_ethertype;
 			} else
-				cs.fw.ethproto = i;
+				cs.eb.ethproto = i;
 
-			if (cs.fw.ethproto < 0x0600)
+			if (cs.eb.ethproto < 0x0600)
 				xtables_error(PARAMETER_PROBLEM,
 					      "Sorry, protocols have values above or equal to 0x0600");
 			break;
 		case 4  : /* Lc */
-#ifdef SILENT_DAEMON
-			if (exec_style == EXEC_STYLE_DAEMON)
-				xtables_error(PARAMETER_PROBLEM,
-					      "--Lc is not supported in daemon mode");
-#endif
 			ebt_check_option2(&flags, LIST_C);
 			if (command != 'L')
 				xtables_error(PARAMETER_PROBLEM,
@@ -1124,11 +1146,6 @@ big_iface_length:
 			flags |= LIST_C;
 			break;
 		case 5  : /* Ln */
-#ifdef SILENT_DAEMON
-			if (exec_style == EXEC_STYLE_DAEMON)
-				xtables_error(PARAMETER_PROBLEM,
-					      "--Ln is not supported in daemon mode");
-#endif
 			ebt_check_option2(&flags, LIST_N);
 			if (command != 'L')
 				xtables_error(PARAMETER_PROBLEM,
@@ -1139,11 +1156,6 @@ big_iface_length:
 			flags |= LIST_N;
 			break;
 		case 6  : /* Lx */
-#ifdef SILENT_DAEMON
-			if (exec_style == EXEC_STYLE_DAEMON)
-				xtables_error(PARAMETER_PROBLEM,
-					      "--Lx is not supported in daemon mode");
-#endif
 			ebt_check_option2(&flags, LIST_X);
 			if (command != 'L')
 				xtables_error(PARAMETER_PROBLEM,
@@ -1154,11 +1166,6 @@ big_iface_length:
 			flags |= LIST_X;
 			break;
 		case 12 : /* Lmac2 */
-#ifdef SILENT_DAEMON
-			if (exec_style == EXEC_STYLE_DAEMON)
-				xtables_error(PARAMETER_PROBLEM,
-					      "--Lmac2 is not supported in daemon mode");
-#endif
 			ebt_check_option2(&flags, LIST_MAC2);
 			if (command != 'L')
 				xtables_error(PARAMETER_PROBLEM,
@@ -1166,8 +1173,7 @@ big_iface_length:
 			flags |= LIST_MAC2;
 			break;
 		case 8 : /* atomic-commit */
-/*			if (exec_style == EXEC_STYLE_DAEMON)
-				ebt_print_error2("--atomic-commit is not supported in daemon mode");
+/*
 			replace->command = c;
 			if (OPT_COMMANDS)
 				ebt_print_error2("Multiple commands are not allowed");
@@ -1186,14 +1192,10 @@ big_iface_length:
 			break;*/
 		/*case 7 :*/ /* atomic-init */
 		/*case 10:*/ /* atomic-save */
-		/*case 11:*/ /* init-table */
-		/*	if (exec_style == EXEC_STYLE_DAEMON) {
-				if (c == 7) {
-					ebt_print_error2("--atomic-init is not supported in daemon mode");
-				} else if (c == 10)
-					ebt_print_error2("--atomic-save is not supported in daemon mode");
-				ebt_print_error2("--init-table is not supported in daemon mode");
-			}
+		case 11: /* init-table */
+			nft_table_flush(h, *table);
+			return 1;
+		/*
 			replace->command = c;
 			if (OPT_COMMANDS)
 				ebt_print_error2("Multiple commands are not allowed");
@@ -1210,20 +1212,16 @@ big_iface_length:
 			}
 			break;
 		case 9 :*/ /* atomic */
-			/*if (exec_style == EXEC_STYLE_DAEMON)
-				ebt_print_error2("--atomic is not supported in daemon mode");
+			/*
 			if (OPT_COMMANDS)
 				ebt_print_error2("--atomic has to come before the command");*/
 			/* A possible memory leak here, but this is not
 			 * executed in daemon mode */
 			/*replace->filename = (char *)malloc(strlen(optarg) + 1);
 			strcpy(replace->filename, optarg);
+			break; */
+		case 13 :
 			break;
-		case 13 : *//* concurrent */
-			/*signal(SIGINT, sighandler);
-			signal(SIGTERM, sighandler);
-			use_lockfd = 1;
-			break;*/
 		case 1 :
 			if (!strcmp(optarg, "!"))
 				ebt_check_inverse2(optarg, argc, argv);
@@ -1234,49 +1232,13 @@ big_iface_length:
 			optind--;
 			continue;
 		default:
-			/* Is it a target option? */
-			if (cs.target != NULL && cs.target->parse != NULL) {
-				int opt_offset = cs.target->option_offset;
-				if (cs.target->parse(c - opt_offset,
-						     argv, ebt_invert,
-						     &cs.target->tflags,
-						     NULL, &cs.target->t))
-					goto check_extension;
-			}
+			ebt_check_inverse2(optarg, argc, argv);
 
-			/* Is it a match_option? */
-			for (m = xtables_matches; m; m = m->next) {
-				if (m->parse(c - m->option_offset, argv, ebt_invert, &m->mflags, NULL, &m->m)) {
-					ebt_add_match(m, &cs);
-					goto check_extension;
-				}
-			}
+			if (ebt_command_default(&cs))
+				xtables_error(PARAMETER_PROBLEM,
+					      "Unknown argument: '%s'",
+					      argv[optind - 1]);
 
-			/* Is it a watcher option? */
-			for (w = xtables_targets; w; w = w->next) {
-				if (w->parse(c - w->option_offset, argv,
-					     ebt_invert, &w->tflags,
-					     NULL, &w->t)) {
-					ebt_add_watcher(w, &cs);
-					goto check_extension;
-				}
-			}
-			/*
-			if (w == NULL && c == '?')
-				ebt_print_error2("Unknown argument: '%s'", argv[optind - 1], (char)optopt, (char)c);
-			else if (w == NULL) {
-				if (!strcmp(t->name, "standard"))
-					ebt_print_error2("Unknown argument: don't forget the -t option");
-				else
-					ebt_print_error2("Target-specific option does not correspond with specified target");
-			}
-			if (ebt_errormsg[0] != '\0')
-				return -1;
-			if (w->used == 0) {
-				ebt_add_watcher(new_entry, w);
-				w->used = 1;
-			}*/
-check_extension:
 			if (command != 'A' && command != 'I' &&
 			    command != 'D' && command != 'C')
 				xtables_error(PARAMETER_PROBLEM,
@@ -1294,8 +1256,7 @@ check_extension:
 
 	if (command == 'h' && !(flags & OPT_ZERO)) {
 		print_help(cs.target, cs.matches, *table);
-		if (exec_style == EXEC_STYLE_PRG)
-			exit(0);
+		exit(0);
 	}
 
 	/* Do the final checks */
@@ -1316,7 +1277,7 @@ check_extension:
 	}
 	/* So, the extensions can work with the host endian.
 	 * The kernel does not have to do this of course */
-	cs.fw.ethproto = htons(cs.fw.ethproto);
+	cs.eb.ethproto = htons(cs.eb.ethproto);
 
 	if (command == 'P') {
 		if (selected_chain < 0) {
@@ -1333,46 +1294,29 @@ check_extension:
 			xtables_error(PARAMETER_PROBLEM, "Wrong policy");
 	} else if (command == 'L') {
 		ret = list_rules(h, chain, *table, rule_nr,
-				 flags&OPT_VERBOSE,
-				 flags&OPT_NUMERIC,
+				 0,
+				 0,
 				 /*flags&OPT_EXPANDED*/0,
 				 flags&LIST_N,
 				 flags&LIST_C);
-		if (!(flags & OPT_ZERO) && exec_style == EXEC_STYLE_PRG)
-			exit(0);
 	}
 	if (flags & OPT_ZERO) {
-		selected_chain = zerochain;
-		ret = nft_chain_zero_counters(h, chain, *table);
+		ret = nft_chain_zero_counters(h, chain, *table, 0);
 	} else if (command == 'F') {
-		ret = nft_rule_flush(h, chain, *table);
+		ret = nft_rule_flush(h, chain, *table, 0);
 	} else if (command == 'A') {
-		ret = append_entry(h, chain, *table, &cs, 0,
-				   flags&OPT_VERBOSE, true);
+		ret = append_entry(h, chain, *table, &cs, 0, 0, true);
 	} else if (command == 'I') {
 		ret = append_entry(h, chain, *table, &cs, rule_nr - 1,
-				   flags&OPT_VERBOSE, false);
+				   0, false);
 	} else if (command == 'D') {
 		ret = delete_entry(h, chain, *table, &cs, rule_nr - 1,
-				   rule_nr_end, flags&OPT_VERBOSE);
+				   rule_nr_end, 0);
 	} /*else if (replace->command == 'C') {
 		ebt_change_counters(replace, new_entry, rule_nr, rule_nr_end, &(new_entry->cnt_surplus), chcounter);
 		if (ebt_errormsg[0] != '\0')
 			return -1;
 	}*/
-	/* Commands -N, -E, -X, --atomic-commit, --atomic-commit, --atomic-save,
-	 * --init-table fall through */
-
-	/*if (ebt_errormsg[0] != '\0')
-		return -1;
-	if (table->check)
-		table->check(replace);
-
-	if (exec_style == EXEC_STYLE_PRG) {*//* Implies ebt_errormsg[0] == '\0' */
-		/*ebt_deliver_table(replace);
-
-		if (replace->nentries)
-			ebt_deliver_counters(replace);*/
 
 	ebt_cs_clean(&cs);
 	return ret;

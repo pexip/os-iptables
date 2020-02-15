@@ -16,12 +16,7 @@
 #include "libiptc/libiptc.h"
 #include "xtables-multi.h"
 #include <xtables.h>
-
-#ifdef DEBUG
-#define DEBUGP(x, args...) fprintf(stderr, x, ## args)
-#else
-#define DEBUGP(x, args...)
-#endif
+#include "xshared.h"
 
 struct xtables_globals iptables_xml_globals = {
 	.option_offset = 0,
@@ -34,11 +29,11 @@ struct xtables_globals iptables_xml_globals = {
 static void print_usage(const char *name, const char *version)
 	    __attribute__ ((noreturn));
 
-static int verbose = 0;
+static int verbose;
 /* Whether to combine actions of sequential rules with identical conditions */
-static int combine = 0;
+static int combine;
 /* Keeping track of external matches and targets.  */
-static struct option options[] = {
+static const struct option options[] = {
 	{"verbose", 0, NULL, 'v'},
 	{"combine", 0, NULL, 'c'},
 	{"help", 0, NULL, 'h'},
@@ -55,32 +50,6 @@ print_usage(const char *name, const char *version)
 	exit(1);
 }
 
-static int
-parse_counters(char *string, struct xt_counters *ctr)
-{
-	__u64 *pcnt, *bcnt;
-
-	if (string != NULL) {
-		pcnt = &ctr->pcnt;
-		bcnt = &ctr->bcnt;
-		return (sscanf
-			(string, "[%llu:%llu]",
-			 (unsigned long long *)pcnt,
-			 (unsigned long long *)bcnt) == 2);
-	} else
-		return (0 == 2);
-}
-
-/* global new argv and argc */
-static char *newargv[255];
-static unsigned int newargc = 0;
-
-static char *oldargv[255];
-static unsigned int oldargc = 0;
-
-/* arg meta data, were they quoted, frinstance */
-static int newargvattr[255];
-
 #define XT_CHAIN_MAXNAMELEN XT_TABLE_MAXNAMELEN
 static char closeActionTag[XT_TABLE_MAXNAMELEN + 1];
 static char closeRuleTag[XT_TABLE_MAXNAMELEN + 1];
@@ -96,58 +65,7 @@ struct chain {
 
 #define maxChains 10240		/* max chains per table */
 static struct chain chains[maxChains];
-static int nextChain = 0;
-
-/* funCtion adding one argument to newargv, updating newargc 
- * returns true if argument added, false otherwise */
-static int
-add_argv(char *what, int quoted)
-{
-	DEBUGP("add_argv: %d %s\n", newargc, what);
-	if (what && newargc + 1 < ARRAY_SIZE(newargv)) {
-		newargv[newargc] = strdup(what);
-		newargvattr[newargc] = quoted;
-		newargc++;
-		return 1;
-	} else
-		return 0;
-}
-
-static void
-free_argv(void)
-{
-	unsigned int i;
-
-	for (i = 0; i < newargc; i++) {
-		free(newargv[i]);
-		newargv[i] = NULL;
-	}
-	newargc = 0;
-
-	for (i = 0; i < oldargc; i++) {
-		free(oldargv[i]);
-		oldargv[i] = NULL;
-	}
-	oldargc = 0;
-}
-
-/* Save parsed rule for comparison with next rule to perform action aggregation
- * on duplicate conditions.
- */
-static void
-save_argv(void)
-{
-	unsigned int i;
-
-	for (i = 0; i < oldargc; i++)
-		free(oldargv[i]);
-	oldargc = newargc;
-	newargc = 0;
-	for (i = 0; i < oldargc; i++) {
-		oldargv[i] = newargv[i];
-		newargv[i] = NULL;
-	}
-}
+static int nextChain;
 
 /* like puts but with xml encoding */
 static void
@@ -426,12 +344,9 @@ do_rule_part(char *leveltag1, char *leveltag2, int part, int argc,
 			else
 				printf("%s%s", spacer, argv[arg]);
 			spacer = " ";
-		} else if (!argvattr[arg] && isTarget(argv[arg])
-			   && existsChain(argv[arg + 1])
-			   && (2 + arg >= argc)) {
-			if (!((1 + arg) < argc))
-				// no args to -j, -m or -g, ignore & finish loop
-				break;
+		} else if (!argvattr[arg] && isTarget(argv[arg]) &&
+			   (arg + 1 < argc) &&
+			   existsChain(argv[arg + 1])) {
 			CLOSE_LEVEL(2);
 			if (level1)
 				printf("%s", leveli1);
@@ -733,7 +648,6 @@ iptables_xml_main(int argc, char *argv[])
 			ret = 1;
 		} else if (curTable[0]) {
 			unsigned int a;
-			char *ptr = buffer;
 			char *pcnt = NULL;
 			char *bcnt = NULL;
 			char *parsestart;
@@ -744,12 +658,10 @@ iptables_xml_main(int argc, char *argv[])
 			int quote_open, quoted;
 			char param_buffer[1024];
 
-			/* reset the newargv */
-			newargc = 0;
-
 			if (buffer[0] == '[') {
 				/* we have counters in our input */
-				ptr = strchr(buffer, ']');
+				char *ptr = strchr(buffer, ']');
+
 				if (!ptr)
 					xtables_error(PARAMETER_PROBLEM,
 						   "Bad line %u: need ]\n",
@@ -819,9 +731,11 @@ iptables_xml_main(int argc, char *argv[])
 					*(param_buffer + param_len) = '\0';
 
 					/* check if table name specified */
-					if (!strncmp(param_buffer, "-t", 3)
-					    || !strncmp(param_buffer,
-							"--table", 8)) {
+					if ((param_buffer[0] == '-' &&
+					     param_buffer[1] != '-' &&
+					     strchr(param_buffer, 't')) ||
+					    (!strncmp(param_buffer, "--t", 3) &&
+					     !strncmp(param_buffer, "--table", strlen(param_buffer)))) {
 						xtables_error(PARAMETER_PROBLEM,
 							   "Line %u seems to have a "
 							   "-t table option.\n",
