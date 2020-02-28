@@ -1,7 +1,7 @@
-Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: iptables
 Upstream-Contact: Netfilter Developer List <netfilter@vger.kernel.org>
-Source: http://ftp.netfilter.org/
+Source: https://www.netfilter.org/
 
 Files: *
 Copyright: 2000-2002, the netfilter coreteam <coreteam@netfilter.org>

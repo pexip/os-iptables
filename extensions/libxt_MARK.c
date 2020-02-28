@@ -76,7 +76,7 @@ static void mark_tg_help(void)
 "  --set-mark value[/mask]   Clear bits in mask and OR value into nfmark\n"
 "  --and-mark bits           Binary AND the nfmark with bits\n"
 "  --or-mark bits            Binary OR the nfmark with bits\n"
-"  --xor-mask bits           Binary XOR the nfmark with bits\n"
+"  --xor-mark bits           Binary XOR the nfmark with bits\n"
 "\n");
 }
 
@@ -252,14 +252,14 @@ static int mark_tg_xlate(struct xt_xlate *xl,
 
 	xt_xlate_add(xl, "meta mark set ");
 
-	if (info->mark == 0)
+	if (info->mask == 0xffffffffU)
+		xt_xlate_add(xl, "0x%x ", info->mark);
+	else if (info->mark == 0)
 		xt_xlate_add(xl, "mark and 0x%x ", ~info->mask);
 	else if (info->mark == info->mask)
 		xt_xlate_add(xl, "mark or 0x%x ", info->mark);
 	else if (info->mask == 0)
 		xt_xlate_add(xl, "mark xor 0x%x ", info->mark);
-	else if (info->mask == 0xffffffffU)
-		xt_xlate_add(xl, "0x%x ", info->mark);
 	else
 		xt_xlate_add(xl, "mark and 0x%x xor 0x%x ", ~info->mask,
 			     info->mark);
@@ -277,13 +277,13 @@ static int MARK_xlate(struct xt_xlate *xl,
 
 	switch(markinfo->mode) {
 	case XT_MARK_SET:
-		xt_xlate_add(xl, "0x%x ", markinfo->mark);
+		xt_xlate_add(xl, "0x%x ", (uint32_t)markinfo->mark);
 		break;
 	case XT_MARK_AND:
-		xt_xlate_add(xl, "mark and 0x%x ", markinfo->mark);
+		xt_xlate_add(xl, "mark and 0x%x ", (uint32_t)markinfo->mark);
 		break;
 	case XT_MARK_OR:
-		xt_xlate_add(xl, "mark or 0x%x ", markinfo->mark);
+		xt_xlate_add(xl, "mark or 0x%x ", (uint32_t)markinfo->mark);
 		break;
 	}
 

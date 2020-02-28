@@ -14,6 +14,7 @@
 #include <string.h>
 #include <time.h>
 #include <netdb.h>
+#include <unistd.h>
 #include "libiptc/libiptc.h"
 #include "iptables.h"
 #include "xtables-multi.h"
@@ -25,32 +26,54 @@
 #include <dlfcn.h>
 #endif
 
+#define prog_name xtables_globals.program_name
+#define prog_vers xtables_globals.program_version
+
 static bool show_counters = false;
 
 static const struct option options[] = {
 	{.name = "counters", .has_arg = false, .val = 'c'},
+	{.name = "version",  .has_arg = false, .val = 'V'},
 	{.name = "dump",     .has_arg = false, .val = 'd'},
 	{.name = "table",    .has_arg = true,  .val = 't'},
 	{.name = "modprobe", .has_arg = true,  .val = 'M'},
+	{.name = "file",     .has_arg = true,  .val = 'f'},
 	{.name = "ipv4",     .has_arg = false, .val = '4'},
 	{.name = "ipv6",     .has_arg = false, .val = '6'},
 	{NULL},
 };
 
+static const struct option arp_save_options[] = {
+	{.name = "counters", .has_arg = false, .val = 'c'},
+	{.name = "version",  .has_arg = false, .val = 'V'},
+	{.name = "modprobe", .has_arg = true,  .val = 'M'},
+	{NULL},
+};
+
+static const struct option ebt_save_options[] = {
+	{.name = "counters", .has_arg = false, .val = 'c'},
+	{.name = "version",  .has_arg = false, .val = 'V'},
+	{.name = "table",    .has_arg = true,  .val = 't'},
+	{.name = "modprobe", .has_arg = true,  .val = 'M'},
+	{NULL},
+};
+
+static bool ebt_legacy_counter_format;
+
 static int
-do_output(struct nft_handle *h, const char *tablename, bool counters)
+__do_output(struct nft_handle *h, const char *tablename, bool counters)
 {
 	struct nftnl_chain_list *chain_list;
 
-	if (!tablename)
-		return nft_for_each_table(h, do_output, counters);
 
-	if (!nft_table_find(h, tablename)) {
-		printf("Table `%s' does not exist\n", tablename);
+	if (!nft_is_table_compatible(h, tablename)) {
+		if (!nft_table_builtin_find(h, tablename))
+			printf("# Table `%s' is incompatible, use 'nft' tool.\n",
+			       tablename);
 		return 0;
 	}
 
-	chain_list = nft_chain_dump(h);
+	chain_list = nft_chain_list_get(h);
 
 	time_t now = time(NULL);
 
@@ -61,13 +84,33 @@ do_output(struct nft_handle *h, const char *tablename, bool counters)
 	/* Dump out chain names first,
 	 * thereby preventing dependency conflicts */
 	nft_chain_save(h, chain_list, tablename);
-	nft_rule_save(h, tablename, counters);
+	nft_rule_save(h, tablename, counters ? 0 : FMT_NOCOUNTS);
 
 	now = time(NULL);
 	printf("COMMIT\n");
 	printf("# Completed on %s", ctime(&now));
+	return 0;
+}
 
-	return 1;
+static int
+do_output(struct nft_handle *h, const char *tablename, bool counters)
+{
+	int ret;
+
+	if (!tablename) {
+		ret = nft_for_each_table(h, __do_output, counters);
+		nft_check_xt_legacy(h->family, true);
+		return !!ret;
+	}
+
+	if (!nft_table_find(h, tablename)) {
+		printf("Table `%s' does not exist\n", tablename);
+		return 1;
+	}
+
+	ret = __do_output(h, tablename, counters);
+	nft_check_xt_legacy(h->family, true);
+	return ret;
 }
 
 /* Format:
@@ -77,12 +120,14 @@ do_output(struct nft_handle *h, const char *tablename, bool counters)
 static int
 xtables_save_main(int family, const char *progname, int argc, char *argv[])
 {
+	struct builtin_table *tables;
 	const char *tablename = NULL;
 	bool dump = false;
 	struct nft_handle h = {
 		.family	= family,
 	};
-	int c;
+	FILE *file = NULL;
+	int ret, c;
 
 	xtables_globals.program_name = progname;
 	c = xtables_init_all(&xtables_globals, family);
@@ -92,19 +137,8 @@ xtables_save_main(int family, const char *progname, int argc, char *argv[])
 				xtables_globals.program_version);
 		exit(1);
 	}
-#if defined(ALL_INCLUSIVE) || defined(NO_SHARED_LIBS)
-	init_extensions();
-	init_extensions4();
-#endif
-	if (nft_init(&h, xtables_ipv4) < 0) {
-		fprintf(stderr, "%s/%s Failed to initialize nft: %s\n",
-				xtables_globals.program_name,
-				xtables_globals.program_version,
-				strerror(errno));
-		exit(EXIT_FAILURE);
-	}
 
-	while ((c = getopt_long(argc, argv, "bcdt:M:46", options, NULL)) != -1) {
+	while ((c = getopt_long(argc, argv, "bcdt:M:f:46V", options, NULL)) != -1) {
 		switch (c) {
 		case 'b':
 			fprintf(stderr, "-b/--binary option is not implemented\n");
@@ -120,6 +154,21 @@ xtables_save_main(int family, const char *progname, int argc, char *argv[])
 		case 'M':
 			xtables_modprobe_program = optarg;
 			break;
+		case 'f':
+			file = fopen(optarg, "w");
+			if (file == NULL) {
+				fprintf(stderr, "Failed to open file, error: %s\n",
+					strerror(errno));
+				exit(1);
+			}
+			ret = dup2(fileno(file), STDOUT_FILENO);
+			if (ret == -1) {
+				fprintf(stderr, "Failed to redirect stdout, error: %s\n",
+					strerror(errno));
+				exit(1);
+			}
+			fclose(file);
+			break;
 		case 'd':
 			dump = true;
 			break;
@@ -130,6 +179,13 @@ xtables_save_main(int family, const char *progname, int argc, char *argv[])
 			h.family = AF_INET6;
 			xtables_set_nfproto(AF_INET6);
 			break;
+		case 'V':
+			printf("%s v%s (nf_tables)\n", prog_name, prog_vers);
+			exit(0);
+		default:
+			fprintf(stderr,
+				"Look at manual page `xtables-save.8' for more information.\n");
+			exit(1);
 		}
 	}
 
@@ -138,17 +194,40 @@ xtables_save_main(int family, const char *progname, int argc, char *argv[])
 		exit(1);
 	}
 
-	if (nft_is_ruleset_compatible(&h) == 1) {
-		printf("ERROR: You're using nft features that cannot be mapped to iptables, please keep using nft.\n");
+	switch (family) {
+	case NFPROTO_IPV4:
+	case NFPROTO_IPV6: /* fallthough, same table */
+#if defined(ALL_INCLUSIVE) || defined(NO_SHARED_LIBS)
+		init_extensions();
+		init_extensions4();
+#endif
+		tables = xtables_ipv4;
+		break;
+	case NFPROTO_ARP:
+		tables = xtables_arp;
+		break;
+	case NFPROTO_BRIDGE:
+		tables = xtables_bridge;
+		break;
+	default:
+		fprintf(stderr, "Unknown family %d\n", family);
+		return 1;
+	}
+
+	if (nft_init(&h, tables) < 0) {
+		fprintf(stderr, "%s/%s Failed to initialize nft: %s\n",
+				xtables_globals.program_name,
+				xtables_globals.program_version,
+				strerror(errno));
 		exit(EXIT_FAILURE);
 	}
 
-	if (dump) {
-		do_output(&h, tablename, show_counters);
+	ret = do_output(&h, tablename, show_counters);
+	nft_fini(&h);
+	if (dump)
 		exit(0);
-	}
 
-	return !do_output(&h, tablename, show_counters);
+	return ret;
 }
 
 int xtables_ip4_save_main(int argc, char *argv[])
@@ -159,4 +238,170 @@ int xtables_ip4_save_main(int argc, char *argv[])
 int xtables_ip6_save_main(int argc, char *argv[])
 {
 	return xtables_save_main(NFPROTO_IPV6, "ip6tables-save", argc, argv);
+}
+
+static int __ebt_save(struct nft_handle *h, const char *tablename, bool counters)
+{
+	struct nftnl_chain_list *chain_list;
+	unsigned int format = FMT_NOCOUNTS;
+	static bool first = true;
+	time_t now;
+
+	if (!nft_table_find(h, tablename)) {
+		printf("Table `%s' does not exist\n", tablename);
+		return 1;
+	}
+
+	if (!nft_is_table_compatible(h, tablename)) {
+		printf("# Table `%s' is incompatible, use 'nft' tool.\n", tablename);
+		return 0;
+	}
+
+	chain_list = nft_chain_list_get(h);
+
+	if (first) {
+		now = time(NULL);
+		printf("# Generated by ebtables-save v%s on %s",
+		       IPTABLES_VERSION, ctime(&now));
+		first = false;
+	}
+	printf("*%s\n", tablename);
+
+	if (counters)
+		format = ebt_legacy_counter_format ? FMT_EBT_SAVE : 0;
+
+	/* Dump out chain names first,
+	 * thereby preventing dependency conflicts */
+	nft_chain_save(h, chain_list, tablename);
+	nft_rule_save(h, tablename, format);
+	printf("\n");
+	return 0;
+}
+
+static int ebt_save(struct nft_handle *h, const char *tablename, bool counters)
+{
+	if (!tablename)
+		return nft_for_each_table(h, __ebt_save, counters);
+
+	return __ebt_save(h, tablename, counters);
+}
+
+int xtables_eb_save_main(int argc_, char *argv_[])
+{
+	const char *ctr = getenv("EBTABLES_SAVE_COUNTER");
+	const char *tablename = NULL;
+	struct nft_handle h = {
+		.family	= NFPROTO_BRIDGE,
+	};
+	int c;
+
+	if (ctr) {
+		if (strcmp(ctr, "yes") == 0) {
+			ebt_legacy_counter_format = true;
+			show_counters = true;
+		}
+	}
+
+	xtables_globals.program_name = "ebtables-save";
+	c = xtables_init_all(&xtables_globals, h.family);
+	if (c < 0) {
+		fprintf(stderr, "%s/%s Failed to initialize xtables\n",
+				xtables_globals.program_name,
+				xtables_globals.program_version);
+		exit(1);
+	}
+
+	while ((c = getopt_long(argc_, argv_, "ct:M:V", ebt_save_options, NULL)) != -1) {
+		switch (c) {
+		case 'c':
+			unsetenv("EBTABLES_SAVE_COUNTER");
+			show_counters = true;
+			ebt_legacy_counter_format = false;
+			break;
+		case 't':
+			/* Select specific table. */
+			tablename = optarg;
+			break;
+		case 'M':
+			xtables_modprobe_program = optarg;
+			break;
+		case 'V':
+			printf("%s v%s (nf_tables)\n", prog_name, prog_vers);
+			exit(0);
+		default:
+			fprintf(stderr,
+				"Look at manual page `xtables-save.8' for more information.\n");
+			exit(1);
+		}
+	}
+
+	if (nft_init(&h, xtables_bridge) < 0) {
+		fprintf(stderr, "%s/%s Failed to initialize nft: %s\n",
+				xtables_globals.program_name,
+				xtables_globals.program_version,
+				strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+
+	ebt_save(&h, tablename, show_counters);
+	nft_fini(&h);
+	return 0;
+}
+
+int xtables_arp_save_main(int argc, char **argv)
+{
+	struct nft_handle h = {
+		.family	= NFPROTO_ARP,
+	};
+	int c;
+
+	xtables_globals.program_name = "arptables-save";
+	c = xtables_init_all(&xtables_globals, h.family);
+	if (c < 0) {
+		fprintf(stderr, "%s/%s Failed to initialize xtables\n",
+				xtables_globals.program_name,
+				xtables_globals.program_version);
+		exit(1);
+	}
+
+	while ((c = getopt_long(argc, argv, "cM:V", arp_save_options, NULL)) != -1) {
+		switch (c) {
+		case 'c':
+			show_counters = true;
+			break;
+		case 'M':
+			xtables_modprobe_program = optarg;
+			break;
+		case 'V':
+			printf("%s v%s (nf_tables)\n", prog_name, prog_vers);
+			exit(0);
+		default:
+			fprintf(stderr,
+				"Look at manual page `xtables-save.8' for more information.\n");
+			exit(1);
+		}
+	}
+
+	if (nft_init(&h, xtables_arp) < 0) {
+		fprintf(stderr, "%s/%s Failed to initialize nft: %s\n",
+				xtables_globals.program_name,
+				xtables_globals.program_version,
+				strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+
+	if (!nft_table_find(&h, "filter"))
+		return 0;
+
+	if (!nft_is_table_compatible(&h, "filter")) {
+		printf("# Table `filter' is incompatible, use 'nft' tool.\n");
+		return 0;
+	}
+
+	printf("*filter\n");
+	nft_chain_save(&h, nft_chain_list_get(&h), "filter");
+	nft_rule_save(&h, "filter", show_counters ? 0 : FMT_NOCOUNTS);
+	printf("\n");
+	nft_fini(&h);
+	return 0;
 }
