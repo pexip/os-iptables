@@ -1,3 +1,9 @@
+iptables (1.8.2-4pexip1) pexip; urgency=medium
+
+  * Migrate to Buster
+
+ -- Vincent Sanders <vince@pexip.com>  Fri, 28 Feb 2020 22:41:37 +0000
+
 iptables (1.8.2-4) unstable; urgency=medium
 
   * [5053b60] d/rules: reintroduce V=1
