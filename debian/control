@@ -20,7 +20,7 @@ Standards-Version: 4.3.0
 Homepage: http://www.netfilter.org/
 Vcs-Git: https://salsa.debian.org/pkg-netfilter-team/pkg-iptables
 Vcs-Browser: https://salsa.debian.org/pkg-netfilter-team/pkg-iptables
-XS-Pexip-Upstream: http://ftp.debian.org/debian/ buster
+XS-Pexip-Upstream: http://deb.debian.org/debian/ bullseye
 
 Package: iptables
 Multi-Arch: foreign
