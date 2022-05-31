@@ -236,7 +236,7 @@ static unsigned int type_xlate_print(struct xt_xlate *xl, unsigned int icmptype,
 			if (icmp_codes[i].type == icmptype &&
 			    icmp_codes[i].code_min == code_min &&
 			    icmp_codes[i].code_max == code_max) {
-				xt_xlate_add(xl, icmp_codes[i].name);
+				xt_xlate_add(xl, "%s", icmp_codes[i].name);
 				return 1;
 			}
 	}
@@ -256,6 +256,11 @@ static int icmp_xlate(struct xt_xlate *xl,
 		if (!type_xlate_print(xl, info->type, info->code[0],
 				      info->code[1]))
 			return 0;
+	} else {
+		/* '-m icmp --icmp-type any' is a noop by itself,
+		 * but it eats a (mandatory) previous '-p icmp' so
+		 * emit it here */
+		xt_xlate_add(xl, "ip protocol icmp");
 	}
 	return 1;
 }

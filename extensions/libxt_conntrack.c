@@ -1249,16 +1249,22 @@ static int _conntrack3_mt_xlate(struct xt_xlate *xl,
 	}
 
 	if (sinfo->match_flags & XT_CONNTRACK_STATE) {
-		xt_xlate_add(xl, "%sct state %s", space,
-			     sinfo->invert_flags & XT_CONNTRACK_STATE ?
-			     "!= " : "");
-		state_xlate_print(xl, sinfo->state_mask);
-		space = " ";
+		if ((sinfo->state_mask & XT_CONNTRACK_STATE_SNAT) ||
+		    (sinfo->state_mask & XT_CONNTRACK_STATE_DNAT)) {
+			xt_xlate_add(xl, "%sct status %s%s", space,
+				     sinfo->invert_flags & XT_CONNTRACK_STATUS ? "!=" : "",
+				     sinfo->state_mask & XT_CONNTRACK_STATE_SNAT ? "snat" : "dnat");
+			space = " ";
+		} else {
+			xt_xlate_add(xl, "%sct state %s", space,
+				     sinfo->invert_flags & XT_CONNTRACK_STATE ?
+				     "!= " : "");
+			state_xlate_print(xl, sinfo->state_mask);
+			space = " ";
+		}
 	}
 
 	if (sinfo->match_flags & XT_CONNTRACK_STATUS) {
-		if (sinfo->status_mask == 1)
-			return 0;
 		xt_xlate_add(xl, "%sct status %s", space,
 			     sinfo->invert_flags & XT_CONNTRACK_STATUS ?
 			     "!= " : "");
