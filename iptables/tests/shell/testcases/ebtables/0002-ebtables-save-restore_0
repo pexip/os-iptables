@@ -4,7 +4,7 @@ set -e
 #set -x
 
 # there is no legacy backend to test
-[[ $XT_MULTI == */xtables-nft-multi ]] || { echo "skip $XT_MULTI"; exit 0; }
+[[ $XT_MULTI == *xtables-nft-multi ]] || { echo "skip $XT_MULTI"; exit 0; }
 
 # fill ebtables manually
 
@@ -50,6 +50,9 @@ $XT_MULTI ebtables -A foo --pkttype-type multicast --limit 100 -j ACCEPT
 
 $XT_MULTI ebtables -A FORWARD -j foo
 
+$XT_MULTI ebtables -N bar
+$XT_MULTI ebtables -P bar RETURN
+
 $XT_MULTI ebtables -t nat -A PREROUTING --redirect-target ACCEPT
 #$XT_MULTI ebtables -t nat -A PREROUTING --to-src fe:ed:ba:be:00:01
 
@@ -59,12 +62,15 @@ $XT_MULTI ebtables -t nat -P OUTPUT DROP
 $XT_MULTI ebtables -t nat -A POSTROUTING -j ACCEPT
 #$XT_MULTI ebtables -t nat -A POSTROUTING --to-dst fe:ed:ba:be:00:01 --dnat-target ACCEPT
 
+$XT_MULTI ebtables -t nat -N nat_foo -P DROP
+
 # compare against stored ebtables dump
 
 DUMP='*filter
 :INPUT ACCEPT
 :FORWARD DROP
 :OUTPUT ACCEPT
+:bar RETURN
 :foo ACCEPT
 -A INPUT -p IPv4 -i lo -j ACCEPT
 -A FORWARD -j foo
@@ -93,15 +99,14 @@ DUMP='*filter
 -A foo --802_3-sap 0x23 --limit 100/sec --limit-burst 5 -j ACCEPT
 -A foo --pkttype-type multicast --log-level notice --log-prefix "" -j CONTINUE
 -A foo --pkttype-type multicast --limit 100/sec --limit-burst 5 -j ACCEPT
-
 *nat
 :PREROUTING ACCEPT
 :OUTPUT DROP
 :POSTROUTING ACCEPT
+:nat_foo DROP
 -A PREROUTING -j redirect 
 -A OUTPUT -j ACCEPT
--A POSTROUTING -j ACCEPT
-'
+-A POSTROUTING -j ACCEPT'
 
 diff -u <(echo -e "$DUMP") <($XT_MULTI ebtables-save | grep -v '^#')
 

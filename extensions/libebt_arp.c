@@ -161,54 +161,6 @@ static void ebt_parse_ip_address(char *address, uint32_t *addr, uint32_t *msk)
 	*addr = *addr & *msk;
 }
 
-static int brarp_get_mac_and_mask(const char *from, unsigned char *to, unsigned char *mask)
-{
-	char *p;
-	int i;
-	struct ether_addr *addr = NULL;
-
-	static const unsigned char mac_type_unicast[ETH_ALEN];
-	static const unsigned char msk_type_unicast[ETH_ALEN] =   {1,0,0,0,0,0};
-	static const unsigned char mac_type_multicast[ETH_ALEN] = {1,0,0,0,0,0};
-	static const unsigned char mac_type_broadcast[ETH_ALEN] = {255,255,255,255,255,255};
-	static const unsigned char mac_type_bridge_group[ETH_ALEN] = {0x01,0x80,0xc2,0,0,0};
-	static const unsigned char msk_type_bridge_group[ETH_ALEN] = {255,255,255,255,255,255};
-
-	if (strcasecmp(from, "Unicast") == 0) {
-		memcpy(to, mac_type_unicast, ETH_ALEN);
-		memcpy(mask, msk_type_unicast, ETH_ALEN);
-		return 0;
-	}
-	if (strcasecmp(from, "Multicast") == 0) {
-		memcpy(to, mac_type_multicast, ETH_ALEN);
-		memcpy(mask, mac_type_multicast, ETH_ALEN);
-		return 0;
-	}
-	if (strcasecmp(from, "Broadcast") == 0) {
-		memcpy(to, mac_type_broadcast, ETH_ALEN);
-		memcpy(mask, mac_type_broadcast, ETH_ALEN);
-		return 0;
-	}
-	if (strcasecmp(from, "BGA") == 0) {
-		memcpy(to, mac_type_bridge_group, ETH_ALEN);
-		memcpy(mask, msk_type_bridge_group, ETH_ALEN);
-		return 0;
-	}
-	if ( (p = strrchr(from, '/')) != NULL) {
-		*p = '\0';
-		if (!(addr = ether_aton(p + 1)))
-			return -1;
-		memcpy(mask, addr, ETH_ALEN);
-	} else
-		memset(mask, 0xff, ETH_ALEN);
-	if (!(addr = ether_aton(from)))
-		return -1;
-	memcpy(to, addr, ETH_ALEN);
-	for (i = 0; i < ETH_ALEN; i++)
-		to[i] &= mask[i];
-	return 0;
-}
-
 static int
 brarp_parse(int c, char **argv, int invert, unsigned int *flags,
 	    const void *entry, struct xt_entry_match **match)
@@ -317,7 +269,7 @@ brarp_parse(int c, char **argv, int invert, unsigned int *flags,
 			else
 				arpinfo->invflags |= EBT_ARP_DST_MAC;
 		}
-		if (brarp_get_mac_and_mask(optarg, maddr, mmask))
+		if (xtables_parse_mac_and_mask(optarg, maddr, mmask))
 			xtables_error(PARAMETER_PROBLEM, "Problem with ARP MAC address argument");
 		break;
 	case ARP_GRAT:
@@ -338,51 +290,51 @@ static void brarp_print(const void *ip, const struct xt_entry_match *match, int 
 
 	if (arpinfo->bitmask & EBT_ARP_OPCODE) {
 		int opcode = ntohs(arpinfo->opcode);
+		printf("--arp-op ");
 		if (arpinfo->invflags & EBT_ARP_OPCODE)
 			printf("! ");
-		printf("--arp-op ");
 		if (opcode > 0 && opcode <= ARRAY_SIZE(opcodes))
 			printf("%s ", opcodes[opcode - 1]);
 		else
 			printf("%d ", opcode);
 	}
 	if (arpinfo->bitmask & EBT_ARP_HTYPE) {
+		printf("--arp-htype ");
 		if (arpinfo->invflags & EBT_ARP_HTYPE)
 			printf("! ");
-		printf("--arp-htype ");
 		printf("%d ", ntohs(arpinfo->htype));
 	}
 	if (arpinfo->bitmask & EBT_ARP_PTYPE) {
+		printf("--arp-ptype ");
 		if (arpinfo->invflags & EBT_ARP_PTYPE)
 			printf("! ");
-		printf("--arp-ptype ");
 		printf("0x%x ", ntohs(arpinfo->ptype));
 	}
 	if (arpinfo->bitmask & EBT_ARP_SRC_IP) {
+		printf("--arp-ip-src ");
 		if (arpinfo->invflags & EBT_ARP_SRC_IP)
 			printf("! ");
-		printf("--arp-ip-src ");
 		printf("%s%s ", xtables_ipaddr_to_numeric((const struct in_addr*) &arpinfo->saddr),
 		       xtables_ipmask_to_numeric((const struct in_addr*)&arpinfo->smsk));
 	}
 	if (arpinfo->bitmask & EBT_ARP_DST_IP) {
+		printf("--arp-ip-dst ");
 		if (arpinfo->invflags & EBT_ARP_DST_IP)
 			printf("! ");
-		printf("--arp-ip-dst ");
 		printf("%s%s ", xtables_ipaddr_to_numeric((const struct in_addr*) &arpinfo->daddr),
 		       xtables_ipmask_to_numeric((const struct in_addr*)&arpinfo->dmsk));
 	}
 	if (arpinfo->bitmask & EBT_ARP_SRC_MAC) {
+		printf("--arp-mac-src ");
 		if (arpinfo->invflags & EBT_ARP_SRC_MAC)
 			printf("! ");
-		printf("--arp-mac-src ");
 		xtables_print_mac_and_mask(arpinfo->smaddr, arpinfo->smmsk);
 		printf(" ");
 	}
 	if (arpinfo->bitmask & EBT_ARP_DST_MAC) {
+		printf("--arp-mac-dst ");
 		if (arpinfo->invflags & EBT_ARP_DST_MAC)
 			printf("! ");
-		printf("--arp-mac-dst ");
 		xtables_print_mac_and_mask(arpinfo->dmaddr, arpinfo->dmmsk);
 		printf(" ");
 	}
