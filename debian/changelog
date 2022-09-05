@@ -1,3 +1,9 @@
+iptables (1.8.7-1pexip5) pexip-bullseye; urgency=medium
+
+  * Bullseye rebuild for ARM64 inclusion
+
+ -- Mark Hymers <mark.hymers@pexip.com>  Mon, 05 Sep 2022 10:32:02 +0100
+
 iptables (1.8.7-1pexip4) pexip-bullseye; urgency=medium
 
   * Rebuild for override changes
