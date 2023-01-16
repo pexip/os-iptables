@@ -21,8 +21,8 @@ EXPECT='Chain INPUT (policy ACCEPT 0 packets, 0 bytes)
 
 Chain FORWARD (policy ACCEPT 0 packets, 0 bytes)
  pkts bytes target     prot opt in     out     source               destination
-    0     0 ACCEPT     all  --  eth2   eth3    10.0.0.1             10.0.0.2
-    0     0 ACCEPT     all  --  eth2   eth3    10.0.0.4             10.0.0.5
+    0     0 ACCEPT     0    --  eth2   eth3    10.0.0.1             10.0.0.2
+    0     0 ACCEPT     0    --  eth2   eth3    10.0.0.4             10.0.0.5
 
 Chain OUTPUT (policy ACCEPT 0 packets, 0 bytes)
  pkts bytes target     prot opt in     out     source               destination'
@@ -54,3 +54,14 @@ diff -u <(echo "Flushing chain \`foobar'") <($XT_MULTI iptables -v -F foobar)
 diff -u <(echo "Zeroing chain \`foobar'") <($XT_MULTI iptables -v -Z foobar)
 
 diff -u <(echo "Deleting chain \`foobar'") <($XT_MULTI iptables -v -X foobar)
+
+# make sure non-verbose mode is silent
+diff -u <(echo -n "") <(
+	$XT_MULTI iptables -N foobar
+	$XT_MULTI iptables -A foobar $RULE1
+	$XT_MULTI iptables -A foobar $RULE2
+	$XT_MULTI iptables -C foobar $RULE1
+	$XT_MULTI iptables -D foobar $RULE2
+	$XT_MULTI iptables -F foobar
+	$XT_MULTI iptables -X foobar
+)

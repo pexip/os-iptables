@@ -10,6 +10,7 @@
  * This code has been sponsored by Sophos Astaro <http://www.sophos.com>
  */
 
+#include <assert.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,8 +21,14 @@
 
 #include <xtables.h>
 
+#include <linux/netfilter/nf_log.h>
 #include <linux/netfilter/xt_comment.h>
 #include <linux/netfilter/xt_limit.h>
+#include <linux/netfilter/xt_NFLOG.h>
+#include <linux/netfilter/xt_mark.h>
+#include <linux/netfilter/xt_pkttype.h>
+
+#include <linux/netfilter_ipv6/ip6t_hl.h>
 
 #include <libmnl/libmnl.h>
 #include <libnftnl/rule.h>
@@ -37,136 +44,166 @@ extern struct nft_family_ops nft_family_ops_ipv6;
 extern struct nft_family_ops nft_family_ops_arp;
 extern struct nft_family_ops nft_family_ops_bridge;
 
-void add_meta(struct nftnl_rule *r, uint32_t key)
+static struct nftnl_expr *xt_nftnl_expr_alloc(const char *name)
 {
-	struct nftnl_expr *expr;
+	struct nftnl_expr *expr = nftnl_expr_alloc(name);
 
-	expr = nftnl_expr_alloc("meta");
-	if (expr == NULL)
-		return;
+	if (expr)
+		return expr;
 
-	nftnl_expr_set_u32(expr, NFTNL_EXPR_META_KEY, key);
-	nftnl_expr_set_u32(expr, NFTNL_EXPR_META_DREG, NFT_REG_1);
-
-	nftnl_rule_add_expr(r, expr);
+	xtables_error(RESOURCE_PROBLEM,
+		      "Failed to allocate nftnl expression '%s'", name);
 }
 
-void add_payload(struct nftnl_rule *r, int offset, int len, uint32_t base)
+void add_meta(struct nft_handle *h, struct nftnl_rule *r, uint32_t key,
+	      uint8_t *dreg)
 {
 	struct nftnl_expr *expr;
+	uint8_t reg;
 
-	expr = nftnl_expr_alloc("payload");
-	if (expr == NULL)
-		return;
+	expr = xt_nftnl_expr_alloc("meta");
 
+	reg = NFT_REG_1;
+	nftnl_expr_set_u32(expr, NFTNL_EXPR_META_KEY, key);
+	nftnl_expr_set_u32(expr, NFTNL_EXPR_META_DREG, reg);
+	nftnl_rule_add_expr(r, expr);
+
+	*dreg = reg;
+}
+
+void add_payload(struct nft_handle *h, struct nftnl_rule *r,
+		 int offset, int len, uint32_t base, uint8_t *dreg)
+{
+	struct nftnl_expr *expr;
+	uint8_t reg;
+
+	expr = xt_nftnl_expr_alloc("payload");
+
+	reg = NFT_REG_1;
 	nftnl_expr_set_u32(expr, NFTNL_EXPR_PAYLOAD_BASE, base);
-	nftnl_expr_set_u32(expr, NFTNL_EXPR_PAYLOAD_DREG, NFT_REG_1);
+	nftnl_expr_set_u32(expr, NFTNL_EXPR_PAYLOAD_DREG, reg);
 	nftnl_expr_set_u32(expr, NFTNL_EXPR_PAYLOAD_OFFSET, offset);
 	nftnl_expr_set_u32(expr, NFTNL_EXPR_PAYLOAD_LEN, len);
-
 	nftnl_rule_add_expr(r, expr);
+
+	*dreg = reg;
 }
 
 /* bitwise operation is = sreg & mask ^ xor */
-void add_bitwise_u16(struct nftnl_rule *r, uint16_t mask, uint16_t xor)
+void add_bitwise_u16(struct nft_handle *h, struct nftnl_rule *r,
+		     uint16_t mask, uint16_t xor, uint8_t sreg, uint8_t *dreg)
 {
 	struct nftnl_expr *expr;
+	uint8_t reg;
 
-	expr = nftnl_expr_alloc("bitwise");
-	if (expr == NULL)
-		return;
+	expr = xt_nftnl_expr_alloc("bitwise");
 
-	nftnl_expr_set_u32(expr, NFTNL_EXPR_BITWISE_SREG, NFT_REG_1);
-	nftnl_expr_set_u32(expr, NFTNL_EXPR_BITWISE_DREG, NFT_REG_1);
+	reg = NFT_REG_1;
+	nftnl_expr_set_u32(expr, NFTNL_EXPR_BITWISE_SREG, sreg);
+	nftnl_expr_set_u32(expr, NFTNL_EXPR_BITWISE_DREG, reg);
 	nftnl_expr_set_u32(expr, NFTNL_EXPR_BITWISE_LEN, sizeof(uint16_t));
 	nftnl_expr_set(expr, NFTNL_EXPR_BITWISE_MASK, &mask, sizeof(uint16_t));
 	nftnl_expr_set(expr, NFTNL_EXPR_BITWISE_XOR, &xor, sizeof(uint16_t));
-
 	nftnl_rule_add_expr(r, expr);
+
+	*dreg = reg;
 }
 
-void add_bitwise(struct nftnl_rule *r, uint8_t *mask, size_t len)
+void add_bitwise(struct nft_handle *h, struct nftnl_rule *r,
+		 uint8_t *mask, size_t len, uint8_t sreg, uint8_t *dreg)
 {
 	struct nftnl_expr *expr;
 	uint32_t xor[4] = { 0 };
+	uint8_t reg = *dreg;
 
-	expr = nftnl_expr_alloc("bitwise");
-	if (expr == NULL)
-		return;
+	expr = xt_nftnl_expr_alloc("bitwise");
 
-	nftnl_expr_set_u32(expr, NFTNL_EXPR_BITWISE_SREG, NFT_REG_1);
-	nftnl_expr_set_u32(expr, NFTNL_EXPR_BITWISE_DREG, NFT_REG_1);
+	nftnl_expr_set_u32(expr, NFTNL_EXPR_BITWISE_SREG, sreg);
+	nftnl_expr_set_u32(expr, NFTNL_EXPR_BITWISE_DREG, reg);
 	nftnl_expr_set_u32(expr, NFTNL_EXPR_BITWISE_LEN, len);
 	nftnl_expr_set(expr, NFTNL_EXPR_BITWISE_MASK, mask, len);
 	nftnl_expr_set(expr, NFTNL_EXPR_BITWISE_XOR, &xor, len);
-
 	nftnl_rule_add_expr(r, expr);
+
+	*dreg = reg;
 }
 
-void add_cmp_ptr(struct nftnl_rule *r, uint32_t op, void *data, size_t len)
+void add_cmp_ptr(struct nftnl_rule *r, uint32_t op, void *data, size_t len,
+		 uint8_t sreg)
 {
 	struct nftnl_expr *expr;
 
-	expr = nftnl_expr_alloc("cmp");
-	if (expr == NULL)
-		return;
+	expr = xt_nftnl_expr_alloc("cmp");
 
-	nftnl_expr_set_u32(expr, NFTNL_EXPR_CMP_SREG, NFT_REG_1);
+	nftnl_expr_set_u32(expr, NFTNL_EXPR_CMP_SREG, sreg);
 	nftnl_expr_set_u32(expr, NFTNL_EXPR_CMP_OP, op);
 	nftnl_expr_set(expr, NFTNL_EXPR_CMP_DATA, data, len);
-
 	nftnl_rule_add_expr(r, expr);
 }
 
-void add_cmp_u8(struct nftnl_rule *r, uint8_t val, uint32_t op)
+void add_cmp_u8(struct nftnl_rule *r, uint8_t val, uint32_t op, uint8_t sreg)
 {
-	add_cmp_ptr(r, op, &val, sizeof(val));
+	add_cmp_ptr(r, op, &val, sizeof(val), sreg);
 }
 
-void add_cmp_u16(struct nftnl_rule *r, uint16_t val, uint32_t op)
+void add_cmp_u16(struct nftnl_rule *r, uint16_t val, uint32_t op, uint8_t sreg)
 {
-	add_cmp_ptr(r, op, &val, sizeof(val));
+	add_cmp_ptr(r, op, &val, sizeof(val), sreg);
 }
 
-void add_cmp_u32(struct nftnl_rule *r, uint32_t val, uint32_t op)
+void add_cmp_u32(struct nftnl_rule *r, uint32_t val, uint32_t op, uint8_t sreg)
 {
-	add_cmp_ptr(r, op, &val, sizeof(val));
+	add_cmp_ptr(r, op, &val, sizeof(val), sreg);
 }
 
-void add_iniface(struct nftnl_rule *r, char *iface, uint32_t op)
+void add_iniface(struct nft_handle *h, struct nftnl_rule *r,
+		 char *iface, uint32_t op)
 {
 	int iface_len;
+	uint8_t reg;
 
 	iface_len = strlen(iface);
 
-	add_meta(r, NFT_META_IIFNAME);
+	add_meta(h, r, NFT_META_IIFNAME, &reg);
 	if (iface[iface_len - 1] == '+') {
 		if (iface_len > 1)
-			add_cmp_ptr(r, op, iface, iface_len - 1);
-	} else
-		add_cmp_ptr(r, op, iface, iface_len + 1);
+			add_cmp_ptr(r, op, iface, iface_len - 1, reg);
+		else if (op != NFT_CMP_EQ)
+			add_cmp_ptr(r, NFT_CMP_EQ, "INVAL/D",
+				    strlen("INVAL/D") + 1, reg);
+	} else {
+		add_cmp_ptr(r, op, iface, iface_len + 1, reg);
+	}
 }
 
-void add_outiface(struct nftnl_rule *r, char *iface, uint32_t op)
+void add_outiface(struct nft_handle *h, struct nftnl_rule *r,
+		  char *iface, uint32_t op)
 {
 	int iface_len;
+	uint8_t reg;
 
 	iface_len = strlen(iface);
 
-	add_meta(r, NFT_META_OIFNAME);
+	add_meta(h, r, NFT_META_OIFNAME, &reg);
 	if (iface[iface_len - 1] == '+') {
 		if (iface_len > 1)
-			add_cmp_ptr(r, op, iface, iface_len - 1);
-	} else
-		add_cmp_ptr(r, op, iface, iface_len + 1);
+			add_cmp_ptr(r, op, iface, iface_len - 1, reg);
+		else if (op != NFT_CMP_EQ)
+			add_cmp_ptr(r, NFT_CMP_EQ, "INVAL/D",
+				    strlen("INVAL/D") + 1, reg);
+	} else {
+		add_cmp_ptr(r, op, iface, iface_len + 1, reg);
+	}
 }
 
-void add_addr(struct nftnl_rule *r, enum nft_payload_bases base, int offset,
+void add_addr(struct nft_handle *h, struct nftnl_rule *r,
+	      enum nft_payload_bases base, int offset,
 	      void *data, void *mask, size_t len, uint32_t op)
 {
 	const unsigned char *m = mask;
 	bool bitwise = false;
-	int i;
+	uint8_t reg;
+	int i, j;
 
 	for (i = 0; i < len; i++) {
 		if (m[i] != 0xff) {
@@ -174,29 +211,36 @@ void add_addr(struct nftnl_rule *r, enum nft_payload_bases base, int offset,
 			break;
 		}
 	}
+	for (j = i + 1; !bitwise && j < len; j++)
+		bitwise = !!m[j];
 
 	if (!bitwise)
 		len = i;
 
-	add_payload(r, offset, len, base);
+	add_payload(h, r, offset, len, base, &reg);
 
 	if (bitwise)
-		add_bitwise(r, mask, len);
+		add_bitwise(h, r, mask, len, reg, &reg);
 
-	add_cmp_ptr(r, op, data, len);
+	add_cmp_ptr(r, op, data, len, reg);
 }
 
-void add_proto(struct nftnl_rule *r, int offset, size_t len,
-	       uint8_t proto, uint32_t op)
+void add_proto(struct nft_handle *h, struct nftnl_rule *r,
+	       int offset, size_t len, uint8_t proto, uint32_t op)
 {
-	add_payload(r, offset, len, NFT_PAYLOAD_NETWORK_HEADER);
-	add_cmp_u8(r, proto, op);
+	uint8_t reg;
+
+	add_payload(h, r, offset, len, NFT_PAYLOAD_NETWORK_HEADER, &reg);
+	add_cmp_u8(r, proto, op, reg);
 }
 
-void add_l4proto(struct nftnl_rule *r, uint8_t proto, uint32_t op)
+void add_l4proto(struct nft_handle *h, struct nftnl_rule *r,
+		 uint8_t proto, uint32_t op)
 {
-	add_meta(r, NFT_META_L4PROTO);
-	add_cmp_u8(r, proto, op);
+	uint8_t reg;
+
+	add_meta(h, r, NFT_META_L4PROTO, &reg);
+	add_cmp_u8(r, proto, op, reg);
 }
 
 bool is_same_interfaces(const char *a_iniface, const char *a_outiface,
@@ -241,7 +285,7 @@ static void parse_ifname(const char *name, unsigned int len, char *dst, unsigned
 	memcpy(dst, name, len);
 	if (name[len - 1] == '\0') {
 		if (mask)
-			memset(mask, 0xff, len);
+			memset(mask, 0xff, strlen(name) + 1);
 		return;
 	}
 
@@ -257,9 +301,82 @@ static void parse_ifname(const char *name, unsigned int len, char *dst, unsigned
 		memset(mask, 0xff, len - 2);
 }
 
-int parse_meta(struct nftnl_expr *e, uint8_t key, char *iniface,
-		unsigned char *iniface_mask, char *outiface,
-		unsigned char *outiface_mask, uint8_t *invflags)
+static struct xtables_match *
+nft_create_match(struct nft_xt_ctx *ctx,
+		 struct iptables_command_state *cs,
+		 const char *name);
+
+static uint32_t get_meta_mask(struct nft_xt_ctx *ctx, enum nft_registers sreg)
+{
+	struct nft_xt_ctx_reg *reg = nft_xt_ctx_get_sreg(ctx, sreg);
+
+	if (reg->bitwise.set)
+		return reg->bitwise.mask[0];
+
+	return ~0u;
+}
+
+static int parse_meta_mark(struct nft_xt_ctx *ctx, struct nftnl_expr *e)
+{
+	struct xt_mark_mtinfo1 *mark;
+	struct xtables_match *match;
+	uint32_t value;
+
+	match = nft_create_match(ctx, ctx->cs, "mark");
+	if (!match)
+		return -1;
+
+	mark = (void*)match->m->data;
+
+	if (nftnl_expr_get_u32(e, NFTNL_EXPR_CMP_OP) == NFT_CMP_NEQ)
+		mark->invert = 1;
+
+	value = nftnl_expr_get_u32(e, NFTNL_EXPR_CMP_DATA);
+	mark->mark = value;
+	mark->mask = get_meta_mask(ctx, nftnl_expr_get_u32(e, NFTNL_EXPR_CMP_SREG));
+
+	return 0;
+}
+
+static int parse_meta_pkttype(struct nft_xt_ctx *ctx, struct nftnl_expr *e)
+{
+	struct xt_pkttype_info *pkttype;
+	struct xtables_match *match;
+	uint8_t value;
+
+	match = nft_create_match(ctx, ctx->cs, "pkttype");
+	if (!match)
+		return -1;
+
+	pkttype = (void*)match->m->data;
+
+	if (nftnl_expr_get_u32(e, NFTNL_EXPR_CMP_OP) == NFT_CMP_NEQ)
+		pkttype->invert = 1;
+
+	value = nftnl_expr_get_u8(e, NFTNL_EXPR_CMP_DATA);
+	pkttype->pkttype = value;
+
+	return 0;
+}
+
+static void parse_invalid_iface(char *iface, unsigned char *mask,
+				uint8_t *invflags, uint8_t invbit)
+{
+	if (*invflags & invbit || strcmp(iface, "INVAL/D"))
+		return;
+
+	/* nft's poor "! -o +" excuse */
+	*invflags |= invbit;
+	iface[0] = '+';
+	iface[1] = '\0';
+	mask[0] = 0xff;
+	mask[1] = 0xff;
+	memset(mask + 2, 0, IFNAMSIZ - 2);
+}
+
+int parse_meta(struct nft_xt_ctx *ctx, struct nftnl_expr *e, uint8_t key,
+	       char *iniface, unsigned char *iniface_mask,
+	       char *outiface, unsigned char *outiface_mask, uint8_t *invflags)
 {
 	uint32_t value;
 	const void *ifname;
@@ -291,6 +408,8 @@ int parse_meta(struct nftnl_expr *e, uint8_t key, char *iniface,
 			*invflags |= IPT_INV_VIA_IN;
 
 		parse_ifname(ifname, len, iniface, iniface_mask);
+		parse_invalid_iface(iniface, iniface_mask,
+				    invflags, IPT_INV_VIA_IN);
 		break;
 	case NFT_META_BRI_OIFNAME:
 	case NFT_META_OIFNAME:
@@ -299,6 +418,14 @@ int parse_meta(struct nftnl_expr *e, uint8_t key, char *iniface,
 			*invflags |= IPT_INV_VIA_OUT;
 
 		parse_ifname(ifname, len, outiface, outiface_mask);
+		parse_invalid_iface(outiface, outiface_mask,
+				    invflags, IPT_INV_VIA_OUT);
+		break;
+	case NFT_META_MARK:
+		parse_meta_mark(ctx, e);
+		break;
+	case NFT_META_PKTTYPE:
+		parse_meta_pkttype(ctx, e);
 		break;
 	default:
 		return -1;
@@ -315,11 +442,12 @@ static void nft_parse_target(struct nft_xt_ctx *ctx, struct nftnl_expr *e)
 	struct xtables_target *target;
 	struct xt_entry_target *t;
 	size_t size;
-	void *data = ctx->cs;
 
 	target = xtables_find_target(targname, XTF_TRY_LOAD);
-	if (target == NULL)
+	if (target == NULL) {
+		ctx->errmsg = "target extension not found";
 		return;
+	}
 
 	size = XT_ALIGN(sizeof(struct xt_entry_target)) + tg_len;
 
@@ -331,7 +459,7 @@ static void nft_parse_target(struct nft_xt_ctx *ctx, struct nftnl_expr *e)
 
 	target->t = t;
 
-	ctx->h->ops->parse_target(target, data);
+	ctx->h->ops->parse_target(target, ctx->cs);
 }
 
 static void nft_parse_match(struct nft_xt_ctx *ctx, struct nftnl_expr *e)
@@ -356,8 +484,10 @@ static void nft_parse_match(struct nft_xt_ctx *ctx, struct nftnl_expr *e)
 	}
 
 	match = xtables_find_match(mt_name, XTF_TRY_LOAD, matches);
-	if (match == NULL)
+	if (match == NULL) {
+		ctx->errmsg = "match extension not found";
 		return;
+	}
 
 	m = xtables_calloc(1, sizeof(struct xt_entry_match) + mt_len);
 	memcpy(&m->data, mt_info, mt_len);
@@ -371,54 +501,61 @@ static void nft_parse_match(struct nft_xt_ctx *ctx, struct nftnl_expr *e)
 		ctx->h->ops->parse_match(match, ctx->cs);
 }
 
-void print_proto(uint16_t proto, int invert)
+void __get_cmp_data(struct nftnl_expr *e, void *data, size_t dlen, uint8_t *op)
 {
-	const struct protoent *pent = getprotobynumber(proto);
+	uint32_t len;
 
-	if (invert)
-		printf("! ");
-
-	if (pent) {
-		printf("-p %s ", pent->p_name);
-		return;
-	}
-
-	printf("-p %u ", proto);
+	memcpy(data, nftnl_expr_get(e, NFTNL_EXPR_CMP_DATA, &len), dlen);
+	*op = nftnl_expr_get_u32(e, NFTNL_EXPR_CMP_OP);
 }
 
 void get_cmp_data(struct nftnl_expr *e, void *data, size_t dlen, bool *inv)
 {
-	uint32_t len;
 	uint8_t op;
 
-	memcpy(data, nftnl_expr_get(e, NFTNL_EXPR_CMP_DATA, &len), dlen);
-	op = nftnl_expr_get_u32(e, NFTNL_EXPR_CMP_OP);
-	if (op == NFT_CMP_NEQ)
-		*inv = true;
-	else
-		*inv = false;
+	__get_cmp_data(e, data, dlen, &op);
+	*inv = (op == NFT_CMP_NEQ);
 }
 
-static void nft_meta_set_to_target(struct nft_xt_ctx *ctx)
+static void nft_meta_set_to_target(struct nft_xt_ctx *ctx,
+				   struct nftnl_expr *e)
 {
 	struct xtables_target *target;
+	struct nft_xt_ctx_reg *sreg;
+	enum nft_registers sregnum;
 	struct xt_entry_target *t;
 	unsigned int size;
 	const char *targname;
 
-	switch (ctx->meta.key) {
+	sregnum = nftnl_expr_get_u32(e, NFTNL_EXPR_META_SREG);
+	sreg = nft_xt_ctx_get_sreg(ctx, sregnum);
+	if (!sreg)
+		return;
+
+	switch (nftnl_expr_get_u32(e, NFTNL_EXPR_META_KEY)) {
 	case NFT_META_NFTRACE:
-		if (ctx->immediate.data[0] == 0)
+		if ((sreg->type != NFT_XT_REG_IMMEDIATE)) {
+			ctx->errmsg = "meta nftrace but reg not immediate";
 			return;
+		}
+
+		if (sreg->immediate.data[0] == 0) {
+			ctx->errmsg = "trace is cleared";
+			return;
+		}
+
 		targname = "TRACE";
 		break;
 	default:
+		ctx->errmsg = "meta sreg key not supported";
 		return;
 	}
 
 	target = xtables_find_target(targname, XTF_TRY_LOAD);
-	if (target == NULL)
+	if (target == NULL) {
+		ctx->errmsg = "target TRACE not found";
 		return;
+	}
 
 	size = XT_ALIGN(sizeof(struct xt_entry_target)) + target->size;
 
@@ -434,68 +571,544 @@ static void nft_meta_set_to_target(struct nft_xt_ctx *ctx)
 
 static void nft_parse_meta(struct nft_xt_ctx *ctx, struct nftnl_expr *e)
 {
-	ctx->meta.key = nftnl_expr_get_u32(e, NFTNL_EXPR_META_KEY);
+        struct nft_xt_ctx_reg *reg;
 
-	if (nftnl_expr_is_set(e, NFTNL_EXPR_META_SREG) &&
-	    (ctx->flags & NFT_XT_CTX_IMMEDIATE) &&
-	     nftnl_expr_get_u32(e, NFTNL_EXPR_META_SREG) == ctx->immediate.reg) {
-		ctx->flags &= ~NFT_XT_CTX_IMMEDIATE;
-		nft_meta_set_to_target(ctx);
+	if (nftnl_expr_is_set(e, NFTNL_EXPR_META_SREG)) {
+		nft_meta_set_to_target(ctx, e);
 		return;
 	}
 
-	ctx->reg = nftnl_expr_get_u32(e, NFTNL_EXPR_META_DREG);
-	ctx->flags |= NFT_XT_CTX_META;
+	reg = nft_xt_ctx_get_dreg(ctx, nftnl_expr_get_u32(e, NFTNL_EXPR_META_DREG));
+	if (!reg)
+		return;
+
+	reg->meta_dreg.key = nftnl_expr_get_u32(e, NFTNL_EXPR_META_KEY);
+	reg->type = NFT_XT_REG_META_DREG;
 }
 
 static void nft_parse_payload(struct nft_xt_ctx *ctx, struct nftnl_expr *e)
 {
-	if (ctx->flags & NFT_XT_CTX_PAYLOAD) {
-		memcpy(&ctx->prev_payload, &ctx->payload,
-		       sizeof(ctx->prev_payload));
-		ctx->flags |= NFT_XT_CTX_PREV_PAYLOAD;
-	}
+	enum nft_registers regnum = nftnl_expr_get_u32(e, NFTNL_EXPR_PAYLOAD_DREG);
+	struct nft_xt_ctx_reg *reg = nft_xt_ctx_get_dreg(ctx, regnum);
 
-	ctx->reg = nftnl_expr_get_u32(e, NFTNL_EXPR_META_DREG);
-	ctx->payload.base = nftnl_expr_get_u32(e, NFTNL_EXPR_PAYLOAD_BASE);
-	ctx->payload.offset = nftnl_expr_get_u32(e, NFTNL_EXPR_PAYLOAD_OFFSET);
-	ctx->payload.len = nftnl_expr_get_u32(e, NFTNL_EXPR_PAYLOAD_LEN);
-	ctx->flags |= NFT_XT_CTX_PAYLOAD;
+	if (!reg)
+		return;
+
+	reg->type = NFT_XT_REG_PAYLOAD;
+	reg->payload.base = nftnl_expr_get_u32(e, NFTNL_EXPR_PAYLOAD_BASE);
+	reg->payload.offset = nftnl_expr_get_u32(e, NFTNL_EXPR_PAYLOAD_OFFSET);
+	reg->payload.len = nftnl_expr_get_u32(e, NFTNL_EXPR_PAYLOAD_LEN);
 }
 
 static void nft_parse_bitwise(struct nft_xt_ctx *ctx, struct nftnl_expr *e)
 {
-	uint32_t reg, len;
+	enum nft_registers sregnum = nftnl_expr_get_u32(e, NFTNL_EXPR_BITWISE_SREG);
+	enum nft_registers dregnum = nftnl_expr_get_u32(e, NFTNL_EXPR_BITWISE_DREG);
+	struct nft_xt_ctx_reg *sreg = nft_xt_ctx_get_sreg(ctx, sregnum);
+	struct nft_xt_ctx_reg *dreg = sreg;
 	const void *data;
+	uint32_t len;
 
-	reg = nftnl_expr_get_u32(e, NFTNL_EXPR_BITWISE_SREG);
-	if (ctx->reg && reg != ctx->reg)
+	if (!sreg)
 		return;
 
+	if (sregnum != dregnum) {
+		dreg = nft_xt_ctx_get_sreg(ctx, dregnum); /* sreg, do NOT clear ... */
+		if (!dreg)
+			return;
+
+		*dreg = *sreg;  /* .. and copy content instead */
+	}
+
 	data = nftnl_expr_get(e, NFTNL_EXPR_BITWISE_XOR, &len);
-	memcpy(ctx->bitwise.xor, data, len);
+
+	if (len > sizeof(dreg->bitwise.xor)) {
+		ctx->errmsg = "bitwise xor too large";
+		return;
+	}
+
+	memcpy(dreg->bitwise.xor, data, len);
+
 	data = nftnl_expr_get(e, NFTNL_EXPR_BITWISE_MASK, &len);
-	memcpy(ctx->bitwise.mask, data, len);
-	ctx->flags |= NFT_XT_CTX_BITWISE;
+
+	if (len > sizeof(dreg->bitwise.mask)) {
+		ctx->errmsg = "bitwise mask too large";
+		return;
+	}
+
+	memcpy(dreg->bitwise.mask, data, len);
+
+	dreg->bitwise.set = true;
+}
+
+static struct xtables_match *
+nft_create_match(struct nft_xt_ctx *ctx,
+		 struct iptables_command_state *cs,
+		 const char *name)
+{
+	struct xtables_match *match;
+	struct xt_entry_match *m;
+	unsigned int size;
+
+	match = xtables_find_match(name, XTF_TRY_LOAD,
+				   &cs->matches);
+	if (!match)
+		return NULL;
+
+	size = XT_ALIGN(sizeof(struct xt_entry_match)) + match->size;
+	m = xtables_calloc(1, size);
+	m->u.match_size = size;
+	m->u.user.revision = match->revision;
+
+	strcpy(m->u.user.name, match->name);
+	match->m = m;
+
+	xs_init_match(match);
+
+	return match;
+}
+
+static struct xt_udp *nft_udp_match(struct nft_xt_ctx *ctx,
+			            struct iptables_command_state *cs)
+{
+	struct xt_udp *udp = ctx->tcpudp.udp;
+	struct xtables_match *match;
+
+	if (!udp) {
+		match = nft_create_match(ctx, cs, "udp");
+		if (!match)
+			return NULL;
+
+		udp = (void*)match->m->data;
+		ctx->tcpudp.udp = udp;
+	}
+
+	return udp;
+}
+
+static struct xt_tcp *nft_tcp_match(struct nft_xt_ctx *ctx,
+			            struct iptables_command_state *cs)
+{
+	struct xt_tcp *tcp = ctx->tcpudp.tcp;
+	struct xtables_match *match;
+
+	if (!tcp) {
+		match = nft_create_match(ctx, cs, "tcp");
+		if (!match) {
+			ctx->errmsg = "tcp match extension not found";
+			return NULL;
+		}
+		tcp = (void*)match->m->data;
+		ctx->tcpudp.tcp = tcp;
+	}
+
+	return tcp;
+}
+
+static void nft_parse_udp_range(struct nft_xt_ctx *ctx,
+			        struct iptables_command_state *cs,
+			        int sport_from, int sport_to,
+			        int dport_from, int dport_to,
+				uint8_t op)
+{
+	struct xt_udp *udp = nft_udp_match(ctx, cs);
+
+	if (!udp)
+		return;
+
+	if (sport_from >= 0) {
+		switch (op) {
+		case NFT_RANGE_NEQ:
+			udp->invflags |= XT_UDP_INV_SRCPT;
+			/* fallthrough */
+		case NFT_RANGE_EQ:
+			udp->spts[0] = sport_from;
+			udp->spts[1] = sport_to;
+			break;
+		}
+	}
+
+	if (dport_to >= 0) {
+		switch (op) {
+		case NFT_CMP_NEQ:
+			udp->invflags |= XT_UDP_INV_DSTPT;
+			/* fallthrough */
+		case NFT_CMP_EQ:
+			udp->dpts[0] = dport_from;
+			udp->dpts[1] = dport_to;
+			break;
+		}
+	}
+}
+
+static void nft_parse_tcp_range(struct nft_xt_ctx *ctx,
+			        struct iptables_command_state *cs,
+			        int sport_from, int sport_to,
+			        int dport_from, int dport_to,
+				uint8_t op)
+{
+	struct xt_tcp *tcp = nft_tcp_match(ctx, cs);
+
+	if (!tcp)
+		return;
+
+	if (sport_from >= 0) {
+		switch (op) {
+		case NFT_RANGE_NEQ:
+			tcp->invflags |= XT_TCP_INV_SRCPT;
+			/* fallthrough */
+		case NFT_RANGE_EQ:
+			tcp->spts[0] = sport_from;
+			tcp->spts[1] = sport_to;
+			break;
+		}
+	}
+
+	if (dport_to >= 0) {
+		switch (op) {
+		case NFT_CMP_NEQ:
+			tcp->invflags |= XT_TCP_INV_DSTPT;
+			/* fallthrough */
+		case NFT_CMP_EQ:
+			tcp->dpts[0] = dport_from;
+			tcp->dpts[1] = dport_to;
+			break;
+		}
+	}
+}
+
+static void port_match_single_to_range(__u16 *ports, __u8 *invflags,
+				       uint8_t op, int port, __u8 invflag)
+{
+	if (port < 0)
+		return;
+
+	switch (op) {
+	case NFT_CMP_NEQ:
+		*invflags |= invflag;
+		/* fallthrough */
+	case NFT_CMP_EQ:
+		ports[0] = port;
+		ports[1] = port;
+		break;
+	case NFT_CMP_LT:
+		ports[1] = max(port - 1, 1);
+		break;
+	case NFT_CMP_LTE:
+		ports[1] = port;
+		break;
+	case NFT_CMP_GT:
+		ports[0] = min(port + 1, UINT16_MAX);
+		break;
+	case NFT_CMP_GTE:
+		ports[0] = port;
+		break;
+	}
+}
+
+static void nft_parse_udp(struct nft_xt_ctx *ctx,
+			  struct iptables_command_state *cs,
+			  int sport, int dport,
+			  uint8_t op)
+{
+	struct xt_udp *udp = nft_udp_match(ctx, cs);
+
+	if (!udp)
+		return;
+
+	port_match_single_to_range(udp->spts, &udp->invflags,
+				   op, sport, XT_UDP_INV_SRCPT);
+	port_match_single_to_range(udp->dpts, &udp->invflags,
+				   op, dport, XT_UDP_INV_DSTPT);
+}
+
+static void nft_parse_tcp(struct nft_xt_ctx *ctx,
+			  struct iptables_command_state *cs,
+			  int sport, int dport,
+			  uint8_t op)
+{
+	struct xt_tcp *tcp = nft_tcp_match(ctx, cs);
+
+	if (!tcp)
+		return;
+
+	port_match_single_to_range(tcp->spts, &tcp->invflags,
+				   op, sport, XT_TCP_INV_SRCPT);
+	port_match_single_to_range(tcp->dpts, &tcp->invflags,
+				   op, dport, XT_TCP_INV_DSTPT);
+}
+
+static void nft_parse_icmp(struct nft_xt_ctx *ctx,
+			   struct iptables_command_state *cs,
+			   struct nft_xt_ctx_reg *sreg,
+			   uint8_t op, const char *data, size_t dlen)
+{
+	struct xtables_match *match;
+	struct ipt_icmp icmp = {
+		.type = UINT8_MAX,
+		.code = { 0, UINT8_MAX },
+	};
+
+	if (dlen < 1)
+		goto out_err_len;
+
+	switch (sreg->payload.offset) {
+	case 0:
+		icmp.type = data[0];
+		if (dlen == 1)
+			break;
+		dlen--;
+		data++;
+		/* fall through */
+	case 1:
+		if (dlen > 1)
+			goto out_err_len;
+		icmp.code[0] = icmp.code[1] = data[0];
+		break;
+	default:
+		ctx->errmsg = "unexpected payload offset";
+		return;
+	}
+
+	switch (ctx->h->family) {
+	case NFPROTO_IPV4:
+		match = nft_create_match(ctx, cs, "icmp");
+		break;
+	case NFPROTO_IPV6:
+		if (icmp.type == UINT8_MAX) {
+			ctx->errmsg = "icmp6 code with any type match not supported";
+			return;
+		}
+		match = nft_create_match(ctx, cs, "icmp6");
+		break;
+	default:
+		ctx->errmsg = "unexpected family for icmp match";
+		return;
+	}
+
+	if (!match) {
+		ctx->errmsg = "icmp match extension not found";
+		return;
+	}
+	memcpy(match->m->data, &icmp, sizeof(icmp));
+	return;
+
+out_err_len:
+	ctx->errmsg = "unexpected RHS data length";
+}
+
+static void nft_parse_th_port(struct nft_xt_ctx *ctx,
+			      struct iptables_command_state *cs,
+			      uint8_t proto,
+			      int sport, int dport, uint8_t op)
+{
+	switch (proto) {
+	case IPPROTO_UDP:
+		nft_parse_udp(ctx, cs, sport, dport, op);
+		break;
+	case IPPROTO_TCP:
+		nft_parse_tcp(ctx, cs, sport, dport, op);
+		break;
+	default:
+		ctx->errmsg = "unknown layer 4 protocol for TH match";
+	}
+}
+
+static void nft_parse_th_port_range(struct nft_xt_ctx *ctx,
+				    struct iptables_command_state *cs,
+				    uint8_t proto,
+				    int sport_from, int sport_to,
+				    int dport_from, int dport_to, uint8_t op)
+{
+	switch (proto) {
+	case IPPROTO_UDP:
+		nft_parse_udp_range(ctx, cs, sport_from, sport_to, dport_from, dport_to, op);
+		break;
+	case IPPROTO_TCP:
+		nft_parse_tcp_range(ctx, cs, sport_from, sport_to, dport_from, dport_to, op);
+		break;
+	}
+}
+
+static void nft_parse_tcp_flags(struct nft_xt_ctx *ctx,
+				struct iptables_command_state *cs,
+				uint8_t op, uint8_t flags, uint8_t mask)
+{
+	struct xt_tcp *tcp = nft_tcp_match(ctx, cs);
+
+	if (!tcp)
+		return;
+
+	if (op == NFT_CMP_NEQ)
+		tcp->invflags |= XT_TCP_INV_FLAGS;
+	tcp->flg_cmp = flags;
+	tcp->flg_mask = mask;
+}
+
+static void nft_parse_transport(struct nft_xt_ctx *ctx,
+				struct nftnl_expr *e,
+				struct iptables_command_state *cs)
+{
+	struct nft_xt_ctx_reg *sreg;
+	enum nft_registers reg;
+	uint32_t sdport;
+	uint16_t port;
+	uint8_t proto, op;
+	unsigned int len;
+
+	switch (ctx->h->family) {
+	case NFPROTO_IPV4:
+		proto = ctx->cs->fw.ip.proto;
+		break;
+	case NFPROTO_IPV6:
+		proto = ctx->cs->fw6.ipv6.proto;
+		break;
+	default:
+		ctx->errmsg = "invalid family for TH match";
+		return;
+	}
+
+	nftnl_expr_get(e, NFTNL_EXPR_CMP_DATA, &len);
+	op = nftnl_expr_get_u32(e, NFTNL_EXPR_CMP_OP);
+
+	reg = nftnl_expr_get_u32(e, NFTNL_EXPR_CMP_SREG);
+	sreg = nft_xt_ctx_get_sreg(ctx, reg);
+	if (!sreg)
+		return;
+
+	if (sreg->type != NFT_XT_REG_PAYLOAD) {
+		ctx->errmsg = "sgreg not payload";
+		return;
+	}
+
+	switch (proto) {
+	case IPPROTO_UDP:
+	case IPPROTO_TCP:
+		break;
+	case IPPROTO_ICMP:
+	case IPPROTO_ICMPV6:
+		nft_parse_icmp(ctx, cs, sreg, op,
+			       nftnl_expr_get(e, NFTNL_EXPR_CMP_DATA, &len),
+			       len);
+		return;
+	default:
+		ctx->errmsg = "unsupported layer 4 protocol value";
+		return;
+	}
+
+	switch(sreg->payload.offset) {
+	case 0: /* th->sport */
+		switch (len) {
+		case 2: /* load sport only */
+			port = ntohs(nftnl_expr_get_u16(e, NFTNL_EXPR_CMP_DATA));
+			nft_parse_th_port(ctx, cs, proto, port, -1, op);
+			return;
+		case 4: /* load both src and dst port */
+			sdport = ntohl(nftnl_expr_get_u32(e, NFTNL_EXPR_CMP_DATA));
+			nft_parse_th_port(ctx, cs, proto, sdport >> 16, sdport & 0xffff, op);
+			return;
+		}
+		break;
+	case 2: /* th->dport */
+		switch (len) {
+		case 2:
+			port = ntohs(nftnl_expr_get_u16(e, NFTNL_EXPR_CMP_DATA));
+			nft_parse_th_port(ctx, cs, proto, -1, port, op);
+			return;
+		}
+		break;
+	case 13: /* th->flags */
+		if (len == 1 && proto == IPPROTO_TCP) {
+			uint8_t flags = nftnl_expr_get_u8(e, NFTNL_EXPR_CMP_DATA);
+			uint8_t mask = ~0;
+
+			if (sreg->bitwise.set)
+				memcpy(&mask, &sreg->bitwise.mask, sizeof(mask));
+
+			nft_parse_tcp_flags(ctx, cs, op, flags, mask);
+		}
+		return;
+	}
+}
+
+static void nft_parse_transport_range(struct nft_xt_ctx *ctx,
+				      const struct nft_xt_ctx_reg *sreg,
+				      struct nftnl_expr *e,
+				      struct iptables_command_state *cs)
+{
+	unsigned int len_from, len_to;
+	uint8_t proto, op;
+	uint16_t from, to;
+
+	switch (ctx->h->family) {
+	case NFPROTO_IPV4:
+		proto = ctx->cs->fw.ip.proto;
+		break;
+	case NFPROTO_IPV6:
+		proto = ctx->cs->fw6.ipv6.proto;
+		break;
+	default:
+		proto = 0;
+		break;
+	}
+
+	nftnl_expr_get(e, NFTNL_EXPR_RANGE_FROM_DATA, &len_from);
+	nftnl_expr_get(e, NFTNL_EXPR_RANGE_FROM_DATA, &len_to);
+	if (len_to != len_from || len_to != 2)
+		return;
+
+	op = nftnl_expr_get_u32(e, NFTNL_EXPR_RANGE_OP);
+
+	from = ntohs(nftnl_expr_get_u16(e, NFTNL_EXPR_RANGE_FROM_DATA));
+	to = ntohs(nftnl_expr_get_u16(e, NFTNL_EXPR_RANGE_TO_DATA));
+
+	switch (sreg->payload.offset) {
+	case 0:
+		nft_parse_th_port_range(ctx, cs, proto, from, to, -1, -1, op);
+		return;
+	case 2:
+		to = ntohs(nftnl_expr_get_u16(e, NFTNL_EXPR_RANGE_TO_DATA));
+		nft_parse_th_port_range(ctx, cs, proto, -1, -1, from, to, op);
+		return;
+	}
 }
 
 static void nft_parse_cmp(struct nft_xt_ctx *ctx, struct nftnl_expr *e)
 {
-	void *data = ctx->cs;
+	struct nft_xt_ctx_reg *sreg;
 	uint32_t reg;
 
 	reg = nftnl_expr_get_u32(e, NFTNL_EXPR_CMP_SREG);
-	if (ctx->reg && reg != ctx->reg)
+
+	sreg = nft_xt_ctx_get_sreg(ctx, reg);
+	if (!sreg)
 		return;
 
-	if (ctx->flags & NFT_XT_CTX_META) {
-		ctx->h->ops->parse_meta(ctx, e, data);
-		ctx->flags &= ~NFT_XT_CTX_META;
-	}
-	/* bitwise context is interpreted from payload */
-	if (ctx->flags & NFT_XT_CTX_PAYLOAD) {
-		ctx->h->ops->parse_payload(ctx, e, data);
-		ctx->flags &= ~NFT_XT_CTX_PAYLOAD;
+	switch (sreg->type) {
+	case NFT_XT_REG_UNDEF:
+		ctx->errmsg = "cmp sreg undef";
+		break;
+	case NFT_XT_REG_META_DREG:
+		ctx->h->ops->parse_meta(ctx, sreg, e, ctx->cs);
+		break;
+	case NFT_XT_REG_PAYLOAD:
+		switch (sreg->payload.base) {
+		case NFT_PAYLOAD_LL_HEADER:
+			if (ctx->h->family == NFPROTO_BRIDGE)
+				ctx->h->ops->parse_payload(ctx, sreg, e, ctx->cs);
+			break;
+		case NFT_PAYLOAD_NETWORK_HEADER:
+			ctx->h->ops->parse_payload(ctx, sreg, e, ctx->cs);
+			break;
+		case NFT_PAYLOAD_TRANSPORT_HEADER:
+			nft_parse_transport(ctx, e, ctx->cs);
+			break;
+		}
+
+		break;
+	default:
+		ctx->errmsg = "cmp sreg has unknown type";
+		break;
 	}
 }
 
@@ -508,24 +1121,30 @@ static void nft_parse_counter(struct nftnl_expr *e, struct xt_counters *counters
 static void nft_parse_immediate(struct nft_xt_ctx *ctx, struct nftnl_expr *e)
 {
 	const char *chain = nftnl_expr_get_str(e, NFTNL_EXPR_IMM_CHAIN);
-	const char *jumpto = NULL;
-	bool nft_goto = false;
-	void *data = ctx->cs;
+	struct iptables_command_state *cs = ctx->cs;
+	struct xt_entry_target *t;
+	uint32_t size;
 	int verdict;
 
 	if (nftnl_expr_is_set(e, NFTNL_EXPR_IMM_DATA)) {
+		struct nft_xt_ctx_reg *dreg;
 		const void *imm_data;
 		uint32_t len;
 
-		imm_data = nftnl_expr_get_data(e, NFTNL_EXPR_IMM_DATA, &len);
-
-		if (len > sizeof(ctx->immediate.data))
+		imm_data = nftnl_expr_get(e, NFTNL_EXPR_IMM_DATA, &len);
+		dreg = nft_xt_ctx_get_dreg(ctx, nftnl_expr_get_u32(e, NFTNL_EXPR_IMM_DREG));
+		if (!dreg)
 			return;
 
-		memcpy(ctx->immediate.data, imm_data, len);
-		ctx->immediate.len = len;
-		ctx->immediate.reg = nftnl_expr_get_u32(e, NFTNL_EXPR_IMM_DREG);
-		ctx->flags |= NFT_XT_CTX_IMMEDIATE;
+		if (len > sizeof(dreg->immediate.data)) {
+			ctx->errmsg = "oversized immediate data";
+			return;
+		}
+
+		memcpy(dreg->immediate.data, imm_data, len);
+		dreg->immediate.len = len;
+		dreg->type = NFT_XT_REG_IMMEDIATE;
+
 		return;
 	}
 
@@ -533,23 +1152,37 @@ static void nft_parse_immediate(struct nft_xt_ctx *ctx, struct nftnl_expr *e)
 	/* Standard target? */
 	switch(verdict) {
 	case NF_ACCEPT:
-		jumpto = "ACCEPT";
+		cs->jumpto = "ACCEPT";
 		break;
 	case NF_DROP:
-		jumpto = "DROP";
+		cs->jumpto = "DROP";
 		break;
 	case NFT_RETURN:
-		jumpto = "RETURN";
+		cs->jumpto = "RETURN";
 		break;;
 	case NFT_GOTO:
-		nft_goto = true;
+		if (ctx->h->ops->set_goto_flag)
+			ctx->h->ops->set_goto_flag(cs);
 		/* fall through */
 	case NFT_JUMP:
-		jumpto = chain;
-		break;
+		cs->jumpto = chain;
+		/* fall through */
+	default:
+		return;
 	}
 
-	ctx->h->ops->parse_immediate(jumpto, nft_goto, data);
+	cs->target = xtables_find_target(cs->jumpto, XTF_TRY_LOAD);
+	if (!cs->target) {
+		ctx->errmsg = "verdict extension not found";
+		return;
+	}
+
+	size = XT_ALIGN(sizeof(struct xt_entry_target)) + cs->target->size;
+	t = xtables_calloc(1, size);
+	t->u.target_size = size;
+	t->u.user.revision = cs->target->revision;
+	strcpy(t->u.user.name, cs->jumpto);
+	cs->target->t = t;
 }
 
 static void nft_parse_limit(struct nft_xt_ctx *ctx, struct nftnl_expr *e)
@@ -575,8 +1208,10 @@ static void nft_parse_limit(struct nft_xt_ctx *ctx, struct nftnl_expr *e)
 	}
 
 	match = xtables_find_match("limit", XTF_TRY_LOAD, matches);
-	if (match == NULL)
+	if (match == NULL) {
+		ctx->errmsg = "limit match extension not found";
 		return;
+	}
 
 	size = XT_ALIGN(sizeof(struct xt_entry_match)) + match->size;
 	match->m = xtables_calloc(1, size);
@@ -593,14 +1228,92 @@ static void nft_parse_limit(struct nft_xt_ctx *ctx, struct nftnl_expr *e)
 		ctx->h->ops->parse_match(match, ctx->cs);
 }
 
+static void nft_parse_log(struct nft_xt_ctx *ctx, struct nftnl_expr *e)
+{
+	struct xtables_target *target;
+	struct xt_entry_target *t;
+	size_t target_size;
+	/*
+	 * In order to handle the longer log-prefix supported by nft, instead of
+	 * using struct xt_nflog_info, we use a struct with a compatible layout, but
+	 * a larger buffer for the prefix.
+	 */
+	struct xt_nflog_info_nft {
+		__u32 len;
+		__u16 group;
+		__u16 threshold;
+		__u16 flags;
+		__u16 pad;
+		char  prefix[NF_LOG_PREFIXLEN];
+	} info = {
+		.group     = nftnl_expr_get_u16(e, NFTNL_EXPR_LOG_GROUP),
+		.threshold = nftnl_expr_get_u16(e, NFTNL_EXPR_LOG_QTHRESHOLD),
+	};
+	if (nftnl_expr_is_set(e, NFTNL_EXPR_LOG_SNAPLEN)) {
+		info.len = nftnl_expr_get_u32(e, NFTNL_EXPR_LOG_SNAPLEN);
+		info.flags = XT_NFLOG_F_COPY_LEN;
+	}
+	if (nftnl_expr_is_set(e, NFTNL_EXPR_LOG_PREFIX))
+		snprintf(info.prefix, sizeof(info.prefix), "%s",
+			 nftnl_expr_get_str(e, NFTNL_EXPR_LOG_PREFIX));
+
+	target = xtables_find_target("NFLOG", XTF_TRY_LOAD);
+	if (target == NULL) {
+		ctx->errmsg = "NFLOG target extension not found";
+		return;
+	}
+
+	target_size = XT_ALIGN(sizeof(struct xt_entry_target)) +
+		      XT_ALIGN(sizeof(struct xt_nflog_info_nft));
+
+	t = xtables_calloc(1, target_size);
+	t->u.target_size = target_size;
+	strcpy(t->u.user.name, target->name);
+	t->u.user.revision = target->revision;
+
+	target->t = t;
+
+	memcpy(&target->t->data, &info, sizeof(info));
+
+	ctx->h->ops->parse_target(target, ctx->cs);
+}
+
 static void nft_parse_lookup(struct nft_xt_ctx *ctx, struct nft_handle *h,
 			     struct nftnl_expr *e)
 {
 	if (ctx->h->ops->parse_lookup)
-		ctx->h->ops->parse_lookup(ctx, e, NULL);
+		ctx->h->ops->parse_lookup(ctx, e);
 }
 
-void nft_rule_to_iptables_command_state(struct nft_handle *h,
+static void nft_parse_range(struct nft_xt_ctx *ctx, struct nftnl_expr *e)
+{
+	struct nft_xt_ctx_reg *sreg;
+	uint32_t reg;
+
+	reg = nftnl_expr_get_u32(e, NFTNL_EXPR_RANGE_SREG);
+	sreg = nft_xt_ctx_get_sreg(ctx, reg);
+
+	switch (sreg->type) {
+	case NFT_XT_REG_UNDEF:
+		ctx->errmsg = "range sreg undef";
+		break;
+	case NFT_XT_REG_PAYLOAD:
+		switch (sreg->payload.base) {
+		case NFT_PAYLOAD_TRANSPORT_HEADER:
+			nft_parse_transport_range(ctx, sreg, e, ctx->cs);
+			break;
+		default:
+			ctx->errmsg = "range with unknown payload base";
+			break;
+		}
+		break;
+	default:
+		ctx->errmsg = "range sreg type unsupported";
+		break;
+	}
+}
+
+bool nft_rule_to_iptables_command_state(struct nft_handle *h,
 					const struct nftnl_rule *r,
 					struct iptables_command_state *cs)
 {
@@ -611,10 +1324,11 @@ void nft_rule_to_iptables_command_state(struct nft_handle *h,
 		.h = h,
 		.table = nftnl_rule_get_str(r, NFTNL_RULE_TABLE),
 	};
+	bool ret = true;
 
 	iter = nftnl_expr_iter_create(r);
 	if (iter == NULL)
-		return;
+		return false;
 
 	ctx.iter = iter;
 	expr = nftnl_expr_iter_next(iter);
@@ -642,6 +1356,16 @@ void nft_rule_to_iptables_command_state(struct nft_handle *h,
 			nft_parse_limit(&ctx, expr);
 		else if (strcmp(name, "lookup") == 0)
 			nft_parse_lookup(&ctx, h, expr);
+		else if (strcmp(name, "log") == 0)
+			nft_parse_log(&ctx, expr);
+		else if (strcmp(name, "range") == 0)
+			nft_parse_range(&ctx, expr);
+
+		if (ctx.errmsg) {
+			fprintf(stderr, "Error: %s\n", ctx.errmsg);
+			ctx.errmsg = NULL;
+			ret = false;
+		}
 
 		expr = nftnl_expr_iter_next(iter);
 	}
@@ -662,7 +1386,7 @@ void nft_rule_to_iptables_command_state(struct nft_handle *h,
 			match = xtables_find_match("comment", XTF_TRY_LOAD,
 						   &cs->matches);
 			if (match == NULL)
-				return;
+				return false;
 
 			size = XT_ALIGN(sizeof(struct xt_entry_match))
 				+ match->size;
@@ -677,163 +1401,12 @@ void nft_rule_to_iptables_command_state(struct nft_handle *h,
 		}
 	}
 
-	if (cs->target != NULL) {
-		cs->jumpto = cs->target->name;
-	} else if (cs->jumpto != NULL) {
-		struct xt_entry_target *t;
-		uint32_t size;
-
-		cs->target = xtables_find_target(cs->jumpto, XTF_TRY_LOAD);
-		if (!cs->target)
-			return;
-
-		size = XT_ALIGN(sizeof(struct xt_entry_target)) + cs->target->size;
-		t = xtables_calloc(1, size);
-		t->u.target_size = size;
-		t->u.user.revision = cs->target->revision;
-		strcpy(t->u.user.name, cs->jumpto);
-		cs->target->t = t;
-	} else {
+	if (!cs->jumpto)
 		cs->jumpto = "";
-	}
-}
 
-void nft_clear_iptables_command_state(struct iptables_command_state *cs)
-{
-	xtables_rule_matches_free(&cs->matches);
-	if (cs->target) {
-		free(cs->target->t);
-		cs->target->t = NULL;
-
-		if (cs->target == cs->target->next) {
-			free(cs->target);
-			cs->target = NULL;
-		}
-	}
-}
-
-void print_header(unsigned int format, const char *chain, const char *pol,
-		  const struct xt_counters *counters, bool basechain,
-		  uint32_t refs, uint32_t entries)
-{
-	printf("Chain %s", chain);
-	if (basechain) {
-		printf(" (policy %s", pol);
-		if (!(format & FMT_NOCOUNTS)) {
-			fputc(' ', stdout);
-			xtables_print_num(counters->pcnt, (format|FMT_NOTABLE));
-			fputs("packets, ", stdout);
-			xtables_print_num(counters->bcnt, (format|FMT_NOTABLE));
-			fputs("bytes", stdout);
-		}
-		printf(")\n");
-	} else {
-		printf(" (%u references)\n", refs);
-	}
-
-	if (format & FMT_LINENUMBERS)
-		printf(FMT("%-4s ", "%s "), "num");
-	if (!(format & FMT_NOCOUNTS)) {
-		if (format & FMT_KILOMEGAGIGA) {
-			printf(FMT("%5s ","%s "), "pkts");
-			printf(FMT("%5s ","%s "), "bytes");
-		} else {
-			printf(FMT("%8s ","%s "), "pkts");
-			printf(FMT("%10s ","%s "), "bytes");
-		}
-	}
-	if (!(format & FMT_NOTARGET))
-		printf(FMT("%-9s ","%s "), "target");
-	fputs(" prot ", stdout);
-	if (format & FMT_OPTIONS)
-		fputs("opt", stdout);
-	if (format & FMT_VIA) {
-		printf(FMT(" %-6s ","%s "), "in");
-		printf(FMT("%-6s ","%s "), "out");
-	}
-	printf(FMT(" %-19s ","%s "), "source");
-	printf(FMT(" %-19s "," %s "), "destination");
-	printf("\n");
-}
-
-void print_rule_details(const struct iptables_command_state *cs,
-			const char *targname, uint8_t flags,
-			uint8_t invflags, uint8_t proto,
-			unsigned int num, unsigned int format)
-{
-	if (format & FMT_LINENUMBERS)
-		printf(FMT("%-4u ", "%u "), num);
-
-	if (!(format & FMT_NOCOUNTS)) {
-		xtables_print_num(cs->counters.pcnt, format);
-		xtables_print_num(cs->counters.bcnt, format);
-	}
-
-	if (!(format & FMT_NOTARGET))
-		printf(FMT("%-9s ", "%s "), targname ? targname : "");
-
-	fputc(invflags & XT_INV_PROTO ? '!' : ' ', stdout);
-	{
-		const char *pname =
-			proto_to_name(proto, format&FMT_NUMERIC);
-		if (pname)
-			printf(FMT("%-5s", "%s "), pname);
-		else
-			printf(FMT("%-5hu", "%hu "), proto);
-	}
-}
-
-static void
-print_iface(char letter, const char *iface, const unsigned char *mask, int inv)
-{
-	unsigned int i;
-
-	if (mask[0] == 0)
-		return;
-
-	printf("%s-%c ", inv ? "! " : "", letter);
-
-	for (i = 0; i < IFNAMSIZ; i++) {
-		if (mask[i] != 0) {
-			if (iface[i] != '\0')
-				printf("%c", iface[i]);
-			} else {
-				if (iface[i-1] != '\0')
-					printf("+");
-				break;
-		}
-	}
-
-	printf(" ");
-}
-
-void save_rule_details(const struct iptables_command_state *cs,
-		       uint8_t invflags, uint16_t proto,
-		       const char *iniface,
-		       unsigned const char *iniface_mask,
-		       const char *outiface,
-		       unsigned const char *outiface_mask)
-{
-	if (iniface != NULL) {
-		print_iface('i', iniface, iniface_mask,
-			    invflags & IPT_INV_VIA_IN);
-	}
-	if (outiface != NULL) {
-		print_iface('o', outiface, outiface_mask,
-			    invflags & IPT_INV_VIA_OUT);
-	}
-
-	if (proto > 0) {
-		const struct protoent *pent = getprotobynumber(proto);
-
-		if (invflags & XT_INV_PROTO)
-			printf("! ");
-
-		if (pent)
-			printf("-p %s ", pent->p_name);
-		else
-			printf("-p %u ", proto);
-	}
+	if (!ret)
+		xtables_error(VERSION_PROBLEM, "Parsing nftables rule failed");
+	return ret;
 }
 
 void nft_ipv46_save_chain(const struct nftnl_chain *c, const char *policy)
@@ -854,33 +1427,33 @@ void save_matches_and_target(const struct iptables_command_state *cs,
 
 	for (matchp = cs->matches; matchp; matchp = matchp->next) {
 		if (matchp->match->alias) {
-			printf("-m %s",
+			printf(" -m %s",
 			       matchp->match->alias(matchp->match->m));
 		} else
-			printf("-m %s", matchp->match->name);
+			printf(" -m %s", matchp->match->name);
 
 		if (matchp->match->save != NULL) {
 			/* cs->fw union makes the trick */
 			matchp->match->save(fw, matchp->match->m);
 		}
-		printf(" ");
 	}
 
 	if ((format & (FMT_NOCOUNTS | FMT_C_COUNTS)) == FMT_C_COUNTS)
-		printf("-c %llu %llu ",
+		printf(" -c %llu %llu",
 		       (unsigned long long)cs->counters.pcnt,
 		       (unsigned long long)cs->counters.bcnt);
 
 	if (cs->target != NULL) {
 		if (cs->target->alias) {
-			printf("-j %s", cs->target->alias(cs->target->t));
+			printf(" -j %s", cs->target->alias(cs->target->t));
 		} else
-			printf("-j %s", cs->jumpto);
+			printf(" -j %s", cs->jumpto);
 
-		if (cs->target->save != NULL)
+		if (cs->target->save != NULL) {
 			cs->target->save(fw, cs->target->t);
+		}
 	} else if (strlen(cs->jumpto) > 0) {
-		printf("-%c %s", goto_flag ? 'g' : 'j', cs->jumpto);
+		printf(" -%c %s", goto_flag ? 'g' : 'j', cs->jumpto);
 	}
 
 	printf("\n");
@@ -979,17 +1552,18 @@ bool compare_targets(struct xtables_target *tg1, struct xtables_target *tg2)
 	return true;
 }
 
-void nft_ipv46_parse_target(struct xtables_target *t, void *data)
+void nft_ipv46_parse_target(struct xtables_target *t,
+			    struct iptables_command_state *cs)
 {
-	struct iptables_command_state *cs = data;
-
 	cs->target = t;
+	cs->jumpto = t->name;
 }
 
 void nft_check_xt_legacy(int family, bool is_ipt_save)
 {
 	static const char tables6[] = "/proc/net/ip6_tables_names";
 	static const char tables4[] = "/proc/net/ip_tables_names";
+	static const char tablesa[] = "/proc/net/arp_tables_names";
 	const char *prefix = "ip";
 	FILE *fp = NULL;
 	char buf[1024];
@@ -1002,6 +1576,10 @@ void nft_check_xt_legacy(int family, bool is_ipt_save)
 		fp = fopen(tables6, "r");
 		prefix = "ip6";
 		break;
+	case NFPROTO_ARP:
+		fp = fopen(tablesa, "r");
+		prefix = "arp";
+		break;
 	default:
 		break;
 	}
@@ -1013,4 +1591,85 @@ void nft_check_xt_legacy(int family, bool is_ipt_save)
 		fprintf(stderr, "# Warning: %stables-legacy tables present, use %stables-legacy%s to see them\n",
 			prefix, prefix, is_ipt_save ? "-save" : "");
 	fclose(fp);
+}
+
+int nft_parse_hl(struct nft_xt_ctx *ctx,
+		 struct nftnl_expr *e,
+		 struct iptables_command_state *cs)
+{
+	struct xtables_match *match;
+	struct ip6t_hl_info *info;
+	uint8_t hl, mode;
+	int op;
+
+	hl = nftnl_expr_get_u8(e, NFTNL_EXPR_CMP_DATA);
+	op = nftnl_expr_get_u32(e, NFTNL_EXPR_CMP_OP);
+
+	switch (op) {
+	case NFT_CMP_NEQ:
+		mode = IP6T_HL_NE;
+		break;
+	case NFT_CMP_EQ:
+		mode = IP6T_HL_EQ;
+		break;
+	case NFT_CMP_LT:
+		mode = IP6T_HL_LT;
+		break;
+	case NFT_CMP_GT:
+		mode = IP6T_HL_GT;
+		break;
+	case NFT_CMP_LTE:
+		mode = IP6T_HL_LT;
+		if (hl == 255)
+			return -1;
+		hl++;
+		break;
+	case NFT_CMP_GTE:
+		mode = IP6T_HL_GT;
+		if (hl == 0)
+			return -1;
+		hl--;
+		break;
+	default:
+		return -1;
+	}
+
+	/* ipt_ttl_info and ip6t_hl_info have same layout,
+	 * IPT_TTL_x and IP6T_HL_x are aliases as well, so
+	 * just use HL for both ipv4 and ipv6.
+	 */
+	switch (ctx->h->family) {
+	case NFPROTO_IPV4:
+		match = nft_create_match(ctx, ctx->cs, "ttl");
+		break;
+	case NFPROTO_IPV6:
+		match = nft_create_match(ctx, ctx->cs, "hl");
+		break;
+	default:
+		return -1;
+	}
+
+	if (!match)
+		return -1;
+
+	info = (void*)match->m->data;
+	info->hop_limit = hl;
+	info->mode = mode;
+
+	return 0;
+}
+
+enum nft_registers nft_get_next_reg(enum nft_registers reg, size_t size)
+{
+	/* convert size to NETLINK_ALIGN-sized chunks */
+	size = (size + NETLINK_ALIGN - 1) / NETLINK_ALIGN;
+
+	/* map 16byte reg to 4byte one */
+	if (reg < __NFT_REG_MAX)
+		reg = NFT_REG32_00 + (reg - 1) * NFT_REG_SIZE / NFT_REG32_SIZE;
+
+	reg += size;
+	assert(reg <= NFT_REG32_15);
+
+	return reg;
 }
