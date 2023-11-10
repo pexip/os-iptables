@@ -16,7 +16,9 @@ Build-Depends: autoconf,
                libnetfilter-conntrack3,
                libnfnetlink-dev,
                libnftnl-dev (>= 1.1.6),
-               libtool (>= 2.2.6)
+               libtool,
+               netbase (>= 6.0),
+               python3
 Standards-Version: 4.5.0
 Homepage: https://www.netfilter.org/
 Vcs-Git: https://salsa.debian.org/pkg-netfilter-team/pkg-iptables.git
@@ -52,7 +54,8 @@ Description: administration tools for packet filtering and NAT
  .
  ip6tables-nft, ip6tables-nft-save, ip6tables-nft-restore (nft-based version)
  .
- ip6tables-legacy, ip6tables-legacy-save, ip6tables-legacy-restore (legacy version)
+ ip6tables-legacy, ip6tables-legacy-save, ip6tables-legacy-restore (legacy
+ version)
  .
  arptables-nft, arptables-nft-save, arptables-nft-restore (nft-based version)
  .
@@ -63,11 +66,19 @@ Multi-Arch: same
 Architecture: linux-any
 Section: libs
 Depends: ${misc:Depends}, ${shlibs:Depends}
-Replaces: iptables (<< 1.4.16.3-3), libxtables11 (>= 1.6.0+snapshot20161117-1)
-Breaks: iptables (<< 1.4.16.3-3), libxtables11 (>= 1.6.0+snapshot20161117-1)
+Replaces: libxtables11 (>= 1.6.0+snapshot20161117-1)
+Breaks: libxtables11 (>= 1.6.0+snapshot20161117-1)
 Description: netfilter xtables library
  The iptables/xtables framework has been replaced by nftables. You should
  consider migrating now.
+ .
+ However, even if a given system may be fully running on native nftables,
+ there are other reasons why libxtables might be installed. For one, nftables
+ itself uses it to be able to display old rulesets that were created using
+ xtables extensions (to help folks migrate). Other third-party software might
+ also be linked to this library.
+ .
+ This library being installed in the system should be harmless in any case.
  .
  This package contains the user-space interface to the Netfilter xtables
  kernel framework.
@@ -77,8 +88,6 @@ Architecture: linux-any
 Multi-Arch: same
 Pre-Depends: ${misc:Pre-Depends}
 Depends: libxtables12 (=${binary:Version}), ${misc:Depends}
-Replaces: iptables-dev (<< 1.6.0-3)
-Breaks: iptables-dev (<< 1.6.0-3)
 Section: libdevel
 Description: netfilter xtables library -- development files
  The iptables/xtables framework has been replaced by nftables. You should
@@ -89,8 +98,7 @@ Description: netfilter xtables library -- development files
 Package: libiptc0
 Architecture: linux-any
 Multi-Arch: same
-Depends: libip4tc2 (=${binary:Version}),
-         ${misc:Depends}
+Depends: libip4tc2 (=${binary:Version}), ${misc:Depends}
 Section: oldlibs
 Description: transitional dummy package
  This is a transitional package. It can safely be removed.
@@ -131,10 +139,9 @@ Package: libip4tc-dev
 Architecture: linux-any
 Multi-Arch: same
 Pre-Depends: ${misc:Pre-Depends}
-Depends: libip4tc2 (=${binary:Version}),
-         ${misc:Depends}
-Replaces: iptables-dev (<< 1.6.0-3), libiptc-dev (<< 1.8.4-2)
-Breaks: iptables-dev (<< 1.6.0-3), libiptc-dev (<< 1.8.4-2)
+Depends: libip4tc2 (=${binary:Version}), ${misc:Depends}
+Replaces: libiptc-dev (<< 1.8.4-2)
+Breaks: libiptc-dev (<< 1.8.4-2)
 Section: libdevel
 Description: Development files for libip4tc
  The iptables/xtables framework has been replaced by nftables. You should
@@ -164,10 +171,7 @@ Package: libip6tc-dev
 Architecture: linux-any
 Multi-Arch: same
 Pre-Depends: ${misc:Pre-Depends}
-Depends: libip6tc2 (=${binary:Version}),
-         ${misc:Depends}
-Replaces: iptables-dev (<< 1.6.0-3)
-Breaks: iptables-dev (<< 1.6.0-3)
+Depends: libip6tc2 (=${binary:Version}), ${misc:Depends}
 Section: libdevel
 Description: Development files for libip6tc
  The iptables/xtables framework has been replaced by nftables. You should
