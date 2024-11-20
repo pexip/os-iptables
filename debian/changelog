@@ -1,3 +1,85 @@
+iptables (1.8.11-2) unstable; urgency=medium
+
+  * [91cce2c] d/patches: add patch to fix `-C` commands (Closes: #1087210)
+  * [3b059f3] d/t/control: update restrictions
+  * [d9b8a1b] d/tests: run shell test-suite
+  * [09bd943] d/tests: run Python test-suite
+  * [55d3615] d/p/translation-test-fixes.patch: add upstream commit ID
+  * [079426e] d/p/fix-interface-comparisons.patch: update patch to the
+    version committed upstream
+
+ -- Jeremy Sowden <azazel@debian.org>  Wed, 20 Nov 2024 09:03:53 +0000
+
+iptables (1.8.11-1) unstable; urgency=medium
+
+  * [e500d5e] d/watch: use substitution variables
+  * [0c98480] d/watch: enable pgp signatures
+  * [365d149] d/upstream: add signing-key.asc
+  * [64f15b8] New upstream version 1.8.11
+  * [74bf869] d/patches: drop upstreamed patches
+  * [ac46cd1] d/control: bump Standards-Version to 4.7.0
+  * [a084ddc] d/patches: add patch to fix translation test-failures
+  * [f786ea7] d/libxtables12.symbols: add new symbol
+  * [853dbe5] d/u/signing-key.asc: minimize key
+
+ -- Jeremy Sowden <azazel@debian.org>  Fri, 08 Nov 2024 18:13:41 +0000
+
+iptables (1.8.10-4) unstable; urgency=medium
+
+  * [4b0a06f] d/p/ebtables-noflush-restore-fix.patch: add DEP-3 metadata
+  * [2ed6c0b] d/patches: add upstream patch to revert numeric output of
+    protocols (Closes: #1067733)
+  * [03a579c] d/control: update my e-mail address
+
+ -- Jeremy Sowden <azazel@debian.org>  Mon, 27 May 2024 16:19:43 +0100
+
+iptables (1.8.10-3) unstable; urgency=medium
+
+  [ Helmut Grohne ]
+  * [aa73981] Fix FTCBFS: Annotate python3 build dependency with :native
+    and <!nocheck>. (Closes: #1061069)
+
+ -- Jeremy Sowden <jeremy@azazel.net>  Wed, 17 Jan 2024 10:58:27 +0000
+
+iptables (1.8.10-2) unstable; urgency=medium
+
+  * [06f4121] d/control: use tracker.d.o address for `Maintainer:`
+  * [f92d307] d/patches: add upstream patch to fix firewalld test-suite
+    (Closes: #1060342)
+
+ -- Jeremy Sowden <jeremy@azazel.net>  Thu, 11 Jan 2024 13:08:21 +0000
+
+iptables (1.8.10-1) unstable; urgency=medium
+
+  [ Arturo Borrero Gonzalez ]
+  * [1ab5581] d/control: drop Laurence J. Lane from the list of maintainers
+
+  [ Jeremy Sowden ]
+  * [fcf2e28] d/control: add myself to uploaders
+  * [7ca92b8] d/control: bump Standards-Version to 4.6.2
+  * [743490b] d/control: set `Rules-Requires-Root: no`
+  * [f494361] d/control: drop libiptc0 transitional package (Closes: #1038305)
+  * [c75ead5] d/control: remove some pre-Buster `Breaks:` and `Replaces:`
+  * [2ed02bc] d/copyright: remove obsolete extensions
+  * [7965dce] d/iptables.lintian-overrides: add overrides for a couple of
+    "library-not-linked-against-libc" errors
+  * [b572baa] d/libip?tc2.symbols: set `Build-Depends-Package:`
+  * [bc420a1] d/u/metadata: set `Bug-Database` to nf bugzilla
+  * [6a43d52] d/README.Debian: fix a typo
+  * [6f71fcd] New upstream version 1.8.10 (Closes: #1051518)
+  * [7842734] d/patches: remove obsolete patches
+  * [2df7a4b] d/patches: add patch to correct spelling errors
+  * [a373c64] d/iptables.lintian-overrides: "iif" is not a typo
+  * [62cf23a] d/rules: add support for the `terse` build option
+  * [05aac4a] d/rules: replace `override_dh_auto_install` with
+    `execute_after_dh_auto_install`
+  * [5d2c115] d/rules: use default `${libdir}`
+  * [6dd2213] d/control: remove superfluous bison & flex build-deps
+  * [5f1f776] d/control: remove superfluous autotools build-deps
+  * [c0cd92e] d/control: remove superfluous libnetfilter-conntrack3 build-dep
+
+ -- Jeremy Sowden <jeremy@azazel.net>  Tue, 12 Dec 2023 20:34:01 +0000
+
 iptables (1.8.9-2) unstable; urgency=medium
 
   * [bbe4f39] iptables: build-depend on netbase

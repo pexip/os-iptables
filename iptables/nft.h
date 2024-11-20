@@ -14,8 +14,9 @@ enum nft_table_type {
 	NFT_TABLE_RAW,
 	NFT_TABLE_FILTER,
 	NFT_TABLE_NAT,
+	NFT_TABLE_BROUTE,
 };
-#define NFT_TABLE_MAX	(NFT_TABLE_NAT + 1)
+#define NFT_TABLE_MAX	(NFT_TABLE_BROUTE + 1)
 
 struct builtin_chain {
 	const char *name;
@@ -71,6 +72,7 @@ enum obj_update_type {
 	NFT_COMPAT_RULE_SAVE,
 	NFT_COMPAT_RULE_ZERO,
 	NFT_COMPAT_BRIDGE_USER_CHAIN_UPDATE,
+	NFT_COMPAT_RULE_CHANGE_COUNTERS,
 };
 
 struct cache_chain {
@@ -116,10 +118,6 @@ struct nft_handle {
 		unsigned int	lineno;
 	} error;
 };
-
-extern const struct builtin_table xtables_ipv4[NFT_TABLE_MAX];
-extern const struct builtin_table xtables_arp[NFT_TABLE_MAX];
-extern const struct builtin_table xtables_bridge[NFT_TABLE_MAX];
 
 int mnl_talk(struct nft_handle *h, struct nlmsghdr *nlh,
 	     int (*cb)(const struct nlmsghdr *nlh, void *data),
@@ -171,9 +169,11 @@ struct nftnl_set *nft_set_batch_lookup_byid(struct nft_handle *h,
 /*
  * Operations with rule-set.
  */
-struct nftnl_rule;
+struct nft_rule_ctx {
+	int			command;
+};
 
-struct nftnl_rule *nft_rule_new(struct nft_handle *h, const char *chain, const char *table, struct iptables_command_state *cs);
+struct nftnl_rule *nft_rule_new(struct nft_handle *h, struct nft_rule_ctx *rule, const char *chain, const char *table, struct iptables_command_state *cs);
 int nft_rule_append(struct nft_handle *h, const char *chain, const char *table, struct nftnl_rule *r, struct nftnl_rule *ref, bool verbose);
 int nft_rule_insert(struct nft_handle *h, const char *chain, const char *table, struct nftnl_rule *r, int rulenum, bool verbose);
 int nft_rule_check(struct nft_handle *h, const char *chain, const char *table, struct nftnl_rule *r, bool verbose);
@@ -185,13 +185,15 @@ int nft_rule_list_save(struct nft_handle *h, const char *chain, const char *tabl
 int nft_rule_save(struct nft_handle *h, const char *table, unsigned int format);
 int nft_rule_flush(struct nft_handle *h, const char *chain, const char *table, bool verbose);
 int nft_rule_zero_counters(struct nft_handle *h, const char *chain, const char *table, int rulenum);
+bool nft_rule_is_policy_rule(struct nftnl_rule *r);
 
 /*
  * Operations used in userspace tools
  */
 int add_counters(struct nftnl_rule *r, uint64_t packets, uint64_t bytes);
 int add_verdict(struct nftnl_rule *r, int verdict);
-int add_match(struct nft_handle *h, struct nftnl_rule *r, struct xt_entry_match *m);
+int add_match(struct nft_handle *h, struct nft_rule_ctx *ctx,
+	      struct nftnl_rule *r, struct xt_entry_match *m);
 int add_target(struct nftnl_rule *r, struct xt_entry_target *t);
 int add_jumpto(struct nftnl_rule *r, const char *name, int verdict);
 int add_action(struct nftnl_rule *r, struct iptables_command_state *cs, bool goto_set);
@@ -233,7 +235,6 @@ int do_commandarp(struct nft_handle *h, int argc, char *argv[], char **table, bo
 /* For xtables-eb.c */
 int nft_init_eb(struct nft_handle *h, const char *pname);
 void nft_fini_eb(struct nft_handle *h);
-int ebt_get_current_chain(const char *chain);
 int do_commandeb(struct nft_handle *h, int argc, char *argv[], char **table, bool restore);
 
 /*
@@ -242,6 +243,7 @@ int do_commandeb(struct nft_handle *h, int argc, char *argv[], char **table, boo
 struct xt_buf;
 
 bool xlate_find_match(const struct iptables_command_state *cs, const char *p_name);
+bool xlate_find_protomatch(const struct iptables_command_state *cs, uint16_t proto);
 int xlate_matches(const struct iptables_command_state *cs, struct xt_xlate *xl);
 int xlate_action(const struct iptables_command_state *cs, bool goto_set,
 		 struct xt_xlate *xl);

@@ -14,16 +14,21 @@
 #include <xtables.h>
 #include "nft.h"
 #include "nft-cmd.h"
+#include <libnftnl/set.h>
 
 struct nft_cmd *nft_cmd_new(struct nft_handle *h, int command,
 			    const char *table, const char *chain,
 			    struct iptables_command_state *state,
 			    int rulenum, bool verbose)
 {
+	struct nft_rule_ctx ctx = {
+		.command = command,
+	};
 	struct nftnl_rule *rule;
 	struct nft_cmd *cmd;
 
 	cmd = xtables_calloc(1, sizeof(struct nft_cmd));
+	INIT_LIST_HEAD(&cmd->head);
 	cmd->error.lineno = h->error.lineno;
 	cmd->command = command;
 	cmd->table = xtables_strdup(table);
@@ -33,7 +38,7 @@ struct nft_cmd *nft_cmd_new(struct nft_handle *h, int command,
 	cmd->verbose = verbose;
 
 	if (state) {
-		rule = nft_rule_new(h, chain, table, state);
+		rule = nft_rule_new(h, &ctx, chain, table, state);
 		if (!rule) {
 			nft_cmd_free(cmd);
 			return NULL;
@@ -61,6 +66,7 @@ void nft_cmd_free(struct nft_cmd *cmd)
 	switch (cmd->command) {
 	case NFT_COMPAT_RULE_CHECK:
 	case NFT_COMPAT_RULE_DELETE:
+	case NFT_COMPAT_RULE_CHANGE_COUNTERS:
 		if (cmd->obj.rule)
 			nftnl_rule_free(cmd->obj.rule);
 		break;
@@ -92,7 +98,7 @@ static void nft_cmd_rule_bridge(struct nft_handle *h, const struct nft_cmd *cmd)
 
 int nft_cmd_rule_append(struct nft_handle *h, const char *chain,
 			const char *table, struct iptables_command_state *state,
-			void *ref, bool verbose)
+			bool verbose)
 {
 	struct nft_cmd *cmd;
 
@@ -391,6 +397,26 @@ int ebt_cmd_user_chain_policy(struct nft_handle *h, const char *table,
 		return 0;
 
 	cmd->policy = xtables_strdup(policy);
+
+	nft_cache_level_set(h, NFT_CL_RULES, cmd);
+
+	return 1;
+}
+
+int nft_cmd_rule_change_counters(struct nft_handle *h,
+				 const char *chain, const char *table,
+				 struct iptables_command_state *cs,
+				 int rule_nr, uint8_t counter_op, bool verbose)
+{
+	struct nft_cmd *cmd;
+
+	cmd = nft_cmd_new(h, NFT_COMPAT_RULE_CHANGE_COUNTERS, table, chain,
+			  rule_nr == -1 ? cs : NULL, rule_nr, verbose);
+	if (!cmd)
+		return 0;
+
+	cmd->counter_op = counter_op;
+	cmd->counters = cs->counters;
 
 	nft_cache_level_set(h, NFT_CL_RULES, cmd);
 

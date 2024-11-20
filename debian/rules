@@ -1,22 +1,24 @@
 #!/usr/bin/make -f
 
+ifeq (,$(filter terse,$(DEB_BUILD_OPTIONS)))
 export DH_VERBOSE=1
-export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 # used by iptables extensions/ makefile to be verbose:
 export V=1
-
-DEB_HOST_MULTIARCH ?= $(shell dpkg-architecture -qDEB_HOST_MULTIARCH)
-LIB_DIR := /usr/lib/$(DEB_HOST_MULTIARCH)
+silent_rules_opt = --disable-silent-rules
+else
+silent_rules_opt = --enable-silent-rules
+endif
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 
 %:
 	dh $@
 
 override_dh_auto_configure:
-	dh_auto_configure -- --disable-libipq --enable-devel \
-			--libdir=$(LIB_DIR) --with-xtlibdir=$(LIB_DIR)/xtables
+	dh_auto_configure -- --disable-libipq \
+			     --enable-devel \
+			     $(silent_rules_opt)
 
-override_dh_auto_install:
-	dh_auto_install
+execute_after_dh_auto_install:
 	# leave room for paths links managed by update-alternatives
 	rm debian/tmp/usr/sbin/iptables
 	rm debian/tmp/usr/sbin/ip6tables
