@@ -1,7 +1,7 @@
 # -*- Makefile -*-
 
 ACLOCAL_AMFLAGS  = -I m4
-AUTOMAKE_OPTIONS = foreign subdir-objects dist-xz no-dist-gzip
+AUTOMAKE_OPTIONS = foreign subdir-objects dist-xz no-dist-gzip serial-tests
 
 SUBDIRS          = libiptc libxtables
 if ENABLE_DEVEL
@@ -20,7 +20,7 @@ EXTRA_DIST	= autogen.sh iptables-test.py xlate-test.py
 
 if ENABLE_NFTABLES
 confdir		= $(sysconfdir)
-dist_conf_DATA	= etc/ethertypes etc/xtables.conf
+dist_conf_DATA	= etc/ethertypes
 endif
 
 .PHONY: tarball

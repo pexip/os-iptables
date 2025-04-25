@@ -822,7 +822,7 @@ static int __iptcc_p_del_policy(struct xtc_handle *h, unsigned int num)
 
 		/* save counter and counter_map information */
 		h->chain_iterator_cur->counter_map.maptype =
-						COUNTER_MAP_ZEROED;
+						COUNTER_MAP_NORMAL_MAP;
 		h->chain_iterator_cur->counter_map.mappos = num-1;
 		memcpy(&h->chain_iterator_cur->counters, &pr->entry->counters,
 			sizeof(h->chain_iterator_cur->counters));
@@ -1318,15 +1318,9 @@ retry:
 		return NULL;
 	}
 
-	sockfd = socket(TC_AF, SOCK_RAW, IPPROTO_RAW);
+	sockfd = socket(TC_AF, SOCK_RAW | SOCK_CLOEXEC, IPPROTO_RAW);
 	if (sockfd < 0)
 		return NULL;
-
-	if (fcntl(sockfd, F_SETFD, FD_CLOEXEC) == -1) {
-		fprintf(stderr, "Could not set close on exec: %s\n",
-			strerror(errno));
-		abort();
-	}
 
 	s = sizeof(info);
 
@@ -2390,11 +2384,15 @@ int TC_RENAME_CHAIN(const IPT_CHAINLABEL oldname,
 		return 0;
 	}
 
+	handle->num_chains--;
+
 	/* This only unlinks "c" from the list, thus no free(c) */
 	iptcc_chain_index_delete_chain(c, handle);
 
 	/* Change the name of the chain */
 	strncpy(c->name, newname, sizeof(IPT_CHAINLABEL) - 1);
+
+	handle->num_chains++;
 
 	/* Insert sorted into to list again */
 	iptc_insert_chain(handle, c);

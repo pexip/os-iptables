@@ -14,7 +14,7 @@ def run_proc(args, shell = False, input = None):
     output, error = process.communicate(input)
     return (process.returncode, output, error)
 
-keywords = ("iptables-translate", "ip6tables-translate", "ebtables-translate")
+keywords = ("iptables-translate", "ip6tables-translate", "arptables-translate", "ebtables-translate")
 xtables_nft_multi = 'xtables-nft-multi'
 
 if sys.stdout.isatty():
@@ -41,9 +41,10 @@ def green(string):
 
 
 def test_one_xlate(name, sourceline, expected, result):
-    rc, output, error = run_proc([xtables_nft_multi] + shlex.split(sourceline))
+    cmd = [xtables_nft_multi] + shlex.split(sourceline)
+    rc, output, error = run_proc(cmd)
     if rc != 0:
-        result.append(name + ": " + red("Error: ") + "iptables-translate failure")
+        result.append(name + ": " + red("Error: ") + "Call failed: " + " ".join(cmd))
         result.append(error)
         return False
 
@@ -64,7 +65,7 @@ def test_one_replay(name, sourceline, expected, result):
     if sourceline.find(';') >= 0:
         sourceline, searchline = sourceline.split(';')
 
-    srcwords = sourceline.split()
+    srcwords = shlex.split(sourceline)
 
     srccmd = srcwords[0]
     ipt = srccmd.split('-')[0]
@@ -95,6 +96,8 @@ def test_one_replay(name, sourceline, expected, result):
     fam = ""
     if srccmd.startswith("ip6"):
         fam = "ip6 "
+    elif srccmd.startswith("arp"):
+        fam = "arp "
     elif srccmd.startswith("ebt"):
         fam = "bridge "
 
@@ -176,7 +179,7 @@ def run_test(name, payload):
                 result.append(name + ": " + red("Fail"))
                 result.append("nft flush ruleset call failed: " + error)
 
-    if (passed == tests) and not args.test:
+    if (passed == tests):
         print(name + ": " + green("OK"))
     if not test_passed:
         print("\n".join(result), file=sys.stderr)
@@ -185,8 +188,10 @@ def run_test(name, payload):
 
 def load_test_files():
     test_files = total_tests = total_passed = total_error = total_failed = 0
-    tests = sorted(os.listdir("extensions"))
-    for test in ['extensions/' + f for f in tests if f.endswith(".txlate")]:
+    tests_path = os.path.join(os.path.dirname(sys.argv[0]), "extensions")
+    tests = sorted(os.listdir(tests_path))
+    for test in [os.path.join(tests_path, f)
+                 for f in tests if f.endswith(".txlate")]:
         with open(test, "r") as payload:
             tests, passed, failed, errors = run_test(test, payload)
             test_files += 1
@@ -241,17 +246,22 @@ def main():
                             + '/iptables/' + xtables_nft_multi
 
     files = tests = passed = failed = errors = 0
-    if args.test:
-        if not args.test.endswith(".txlate"):
-            args.test += ".txlate"
+    for test in args.test:
+        if not test.endswith(".txlate"):
+            test += ".txlate"
         try:
-            with open(args.test, "r") as payload:
-                files = 1
-                tests, passed, failed, errors = run_test(args.test, payload)
+            with open(test, "r") as payload:
+                t, p, f, e = run_test(test, payload)
+                files += 1
+                tests += t
+                passed += p
+                failed += f
+                errors += e
         except IOError:
             print(red("Error: ") + "test file does not exist", file=sys.stderr)
             return 99
-    else:
+
+    if files == 0:
         files, tests, passed, failed, errors = load_test_files()
 
     if files > 1:
@@ -272,6 +282,6 @@ parser.add_argument('-n', '--nft', type=str, default='nft',
                     help='Replay using given nft binary (default: \'%(default)s\')')
 parser.add_argument('--no-netns', action='store_true',
                     help='Do not run testsuite in own network namespace')
-parser.add_argument("test", nargs="?", help="run only the specified test file")
+parser.add_argument("test", nargs="*", help="run only the specified test file(s)")
 args = parser.parse_args()
 sys.exit(main())
