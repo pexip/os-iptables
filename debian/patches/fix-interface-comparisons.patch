@@ -1,0 +1,144 @@
+Author: Jeremy Sowden <jeremy@azazel.net>
+Last-Update: 2024-11-20
+Bug-Debian: https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=1087210
+Forwarded: https://lore.kernel.org/netfilter-devel/20241118135650.510715-1-jeremy@azazel.net/
+Applied-Upstream: commit:40406dbfaefbc204134452b2747bae4f6a122848
+Description: Fix interface comparisons in `-C` commands
+ Commit 9ccae6397475 ("nft: Leave interface masks alone when parsing from
+ kernel") removed code which explicitly set interface masks to all ones.  The
+ result of this is that they are zero.  However, they are used to mask interfaces
+ in `is_same_interfaces`.  Consequently, the masked values are alway zero, the
+ comparisons are always true, and check commands which ought to fail succeed:
+  .
+  # iptables -N test
+  # iptables -A test -i lo \! -o lo -j REJECT
+  # iptables -v -L test
+  Chain test (0 references)
+   pkts bytes target     prot opt in     out     source               destination
+      0     0 REJECT     all  --  lo     !lo     anywhere             anywhere             reject-with icmp-port-unreachable
+  # iptables -v -C test -i abcdefgh \! -o abcdefgh -j REJECT
+  REJECT  all opt -- in lo out !lo  0.0.0.0/0  -> 0.0.0.0/0   reject-with icmp-port-unreachable
+  .
+ Remove the mask parameters from `is_same_interfaces`.  Add a test-case.
+
+--- a/iptables/nft-arp.c
++++ b/iptables/nft-arp.c
+@@ -385,14 +385,8 @@
+ 		return false;
+ 	}
+ 
+-	return is_same_interfaces(a->arp.iniface,
+-				  a->arp.outiface,
+-				  (unsigned char *)a->arp.iniface_mask,
+-				  (unsigned char *)a->arp.outiface_mask,
+-				  b->arp.iniface,
+-				  b->arp.outiface,
+-				  (unsigned char *)b->arp.iniface_mask,
+-				  (unsigned char *)b->arp.outiface_mask);
++	return is_same_interfaces(a->arp.iniface, a->arp.outiface,
++				  b->arp.iniface, b->arp.outiface);
+ }
+ 
+ static void nft_arp_save_chain(const struct nftnl_chain *c, const char *policy)
+--- a/iptables/nft-ipv4.c
++++ b/iptables/nft-ipv4.c
+@@ -113,9 +113,7 @@
+ 	}
+ 
+ 	return is_same_interfaces(a->fw.ip.iniface, a->fw.ip.outiface,
+-				  a->fw.ip.iniface_mask, a->fw.ip.outiface_mask,
+-				  b->fw.ip.iniface, b->fw.ip.outiface,
+-				  b->fw.ip.iniface_mask, b->fw.ip.outiface_mask);
++				  b->fw.ip.iniface, b->fw.ip.outiface);
+ }
+ 
+ static void nft_ipv4_set_goto_flag(struct iptables_command_state *cs)
+--- a/iptables/nft-ipv6.c
++++ b/iptables/nft-ipv6.c
+@@ -99,11 +99,7 @@
+ 	}
+ 
+ 	return is_same_interfaces(a->fw6.ipv6.iniface, a->fw6.ipv6.outiface,
+-				  a->fw6.ipv6.iniface_mask,
+-				  a->fw6.ipv6.outiface_mask,
+-				  b->fw6.ipv6.iniface, b->fw6.ipv6.outiface,
+-				  b->fw6.ipv6.iniface_mask,
+-				  b->fw6.ipv6.outiface_mask);
++				  b->fw6.ipv6.iniface, b->fw6.ipv6.outiface);
+ }
+ 
+ static void nft_ipv6_set_goto_flag(struct iptables_command_state *cs)
+--- a/iptables/nft-shared.c
++++ b/iptables/nft-shared.c
+@@ -220,36 +220,16 @@
+ }
+ 
+ bool is_same_interfaces(const char *a_iniface, const char *a_outiface,
+-			unsigned const char *a_iniface_mask,
+-			unsigned const char *a_outiface_mask,
+-			const char *b_iniface, const char *b_outiface,
+-			unsigned const char *b_iniface_mask,
+-			unsigned const char *b_outiface_mask)
++			const char *b_iniface, const char *b_outiface)
+ {
+-	int i;
+-
+-	for (i = 0; i < IFNAMSIZ; i++) {
+-		if (a_iniface_mask[i] != b_iniface_mask[i]) {
+-			DEBUGP("different iniface mask %x, %x (%d)\n",
+-			a_iniface_mask[i] & 0xff, b_iniface_mask[i] & 0xff, i);
+-			return false;
+-		}
+-		if ((a_iniface[i] & a_iniface_mask[i])
+-		    != (b_iniface[i] & b_iniface_mask[i])) {
+-			DEBUGP("different iniface\n");
+-			return false;
+-		}
+-		if (a_outiface_mask[i] != b_outiface_mask[i]) {
+-			DEBUGP("different outiface mask\n");
+-			return false;
+-		}
+-		if ((a_outiface[i] & a_outiface_mask[i])
+-		    != (b_outiface[i] & b_outiface_mask[i])) {
+-			DEBUGP("different outiface\n");
+-			return false;
+-		}
++	if (strncmp(a_iniface, b_iniface, IFNAMSIZ)) {
++		DEBUGP("different iniface\n");
++		return false;
++	}
++	if (strncmp(a_outiface, b_outiface, IFNAMSIZ)) {
++		DEBUGP("different outiface\n");
++		return false;
+ 	}
+-
+ 	return true;
+ }
+ 
+--- a/iptables/nft-shared.h
++++ b/iptables/nft-shared.h
+@@ -105,11 +105,7 @@
+ void add_compat(struct nftnl_rule *r, uint32_t proto, bool inv);
+ 
+ bool is_same_interfaces(const char *a_iniface, const char *a_outiface,
+-			unsigned const char *a_iniface_mask,
+-			unsigned const char *a_outiface_mask,
+-			const char *b_iniface, const char *b_outiface,
+-			unsigned const char *b_iniface_mask,
+-			unsigned const char *b_outiface_mask);
++			const char *b_iniface, const char *b_outiface);
+ 
+ void __get_cmp_data(struct nftnl_expr *e, void *data, size_t dlen, uint8_t *op);
+ void get_cmp_data(struct nftnl_expr *e, void *data, size_t dlen, bool *inv);
+--- /dev/null
++++ b/iptables/tests/shell/testcases/nft-only/0020-compare-interfaces_0
+@@ -0,0 +1,9 @@
++#!/bin/bash
++
++[[ $XT_MULTI == *xtables-nft-multi ]] || { echo "skip $XT_MULTI"; exit 0; }
++
++$XT_MULTI iptables -N test
++$XT_MULTI iptables -A test -i lo \! -o lo -j REJECT
++$XT_MULTI iptables -C test -i abcdefgh \! -o abcdefgh -j REJECT 2>/dev/null && exit 1
++
++exit 0

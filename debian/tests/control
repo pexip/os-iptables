@@ -1,63 +1,71 @@
-Test-Command: iptables-legacy -h
+Test-Command: /usr/sbin/iptables-legacy -h
 Depends: @
-Restrictions: needs-root, isolation-container
+Restrictions: superficial
 
-Test-Command: ip6tables-legacy -h
+Test-Command: /usr/sbin/ip6tables-legacy -h
 Depends: @
-Restrictions: needs-root, isolation-container
+Restrictions: superficial
 
-Test-Command: iptables-legacy-save
+Test-Command: /usr/sbin/iptables-legacy-save -V
 Depends: @
-Restrictions: needs-root, isolation-container
+Restrictions: superficial
 
-Test-Command: ip6tables-legacy-save
+Test-Command: /usr/sbin/ip6tables-legacy-save -V
 Depends: @
-Restrictions: needs-root, isolation-container
+Restrictions: superficial
 
-Test-Command: iptables-legacy-restore -h
+Test-Command: /usr/sbin/iptables-legacy-restore -V
 Depends: @
-Restrictions: needs-root, isolation-container, allow-stderr
+Restrictions: superficial
 
-Test-Command: ip6tables-legacy-restore -h
+Test-Command: /usr/sbin/ip6tables-legacy-restore -V
 Depends: @
-Restrictions: needs-root, isolation-container, allow-stderr
+Restrictions: superficial
 
-Test-Command: iptables-nft -h
+Test-Command: /usr/sbin/iptables-nft -h
 Depends: @
-Restrictions: needs-root, isolation-container
+Restrictions: superficial
 
-Test-Command: ip6tables-nft -h
+Test-Command: /usr/sbin/ip6tables-nft -h
 Depends: @
-Restrictions: needs-root, isolation-container
+Restrictions: superficial
 
-Test-Command: iptables-nft-save
+Test-Command: /usr/sbin/iptables-nft-save -V
 Depends: @
-Restrictions: needs-root, isolation-container
+Restrictions: superficial
 
-Test-Command: ip6tables-nft-save
+Test-Command: /usr/sbin/ip6tables-nft-save -V
 Depends: @
-Restrictions: needs-root, isolation-container
+Restrictions: superficial
 
-Test-Command: iptables-nft-restore -h
+Test-Command: /usr/sbin/iptables-nft-restore -V
 Depends: @
-Restrictions: needs-root, isolation-container, allow-stderr
+Restrictions: superficial
 
-Test-Command: ip6tables-nft-restore -h
+Test-Command: /usr/sbin/ip6tables-nft-restore -V
 Depends: @
-Restrictions: needs-root, isolation-container, allow-stderr
+Restrictions: superficial
 
-Test-Command: arptables-nft -h
+Test-Command: /usr/sbin/arptables-nft -h
 Depends: @
-Restrictions: needs-root, isolation-container
+Restrictions: superficial
 
-Test-Command: ebtables-nft -h
+Test-Command: /usr/sbin/ebtables-nft -h
 Depends: @
-Restrictions: needs-root, isolation-container
+Restrictions: superficial
 
-Test-Command: iptables-translate -h
+Test-Command: /usr/sbin/iptables-translate -h
 Depends: @
-Restrictions: needs-root, isolation-container
+Restrictions: superficial
 
-Test-Command: ip6tables-translate -h
+Test-Command: /usr/sbin/ip6tables-translate -h
 Depends: @
-Restrictions: needs-root, isolation-container
+Restrictions: superficial
+
+Tests: run-shell-tests.sh
+Depends: @
+Restrictions: needs-root, isolation-container, flaky
+
+Tests: run-py-tests.sh
+Depends: @, python3
+Restrictions: needs-root, isolation-container, flaky
